@@ -1,0 +1,73 @@
+{
+  "name": "kanban-local",
+  "version": "0.1.0",
+  "private": true,
+  "description": "本地工作看板",
+  "author": "Kanban",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run typecheck && electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "start": "electron-vite preview",
+    "test": "vitest run",
+    "test:e2e": "npm run build && playwright test",
+    "schema": "tsx scripts/schema.ts",
+    "prepare:electron": "node -e \"require('electron')\"",
+    "dist": "npm run build && npm run prepare:electron && electron-builder --win nsis --x64",
+    "pack": "npm run build && npm run prepare:electron && electron-builder --win --dir"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "latest",
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0",
+    "electron-vite": "6.0.0",
+    "tsx": "latest",
+    "typescript": "^5.9.0",
+    "vite": "latest",
+    "vitest": "latest"
+  },
+  "build": {
+    "appId": "local.kanban.desktop",
+    "productName": "Kanban",
+    "directories": {
+      "output": "dist",
+      "buildResources": "resources"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "toolsets": {
+      "nsis": "1.2.1",
+      "winCodeSign": "1.1.0"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "resources/icon.ico",
+      "signExecutable": false,
+      "artifactName": "Kanban-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": false
+    }
+  }
+}
