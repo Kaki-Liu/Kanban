@@ -17,6 +17,11 @@ const api: DesktopAPI = {
     editRun: (id, title, body) => call("items.edit", id, title, body),
   },
   projects: {
+    previewConfig: (text, targetId) =>
+      call("projects.config.preview", text, targetId),
+    commitConfig: (token) => call("projects.config.commit", token),
+    exportConfig: (id) => call("projects.config.export", id),
+    saveConfigFile: (text) => call("projects.config.saveFile", text),
     save: (input) => call("projects.save", input),
     saveWorkflow: (id, workflow, revision) =>
       call("projects.workflow", id, workflow, revision),

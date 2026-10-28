@@ -16,6 +16,7 @@ import type {
 } from "../../shared/contracts";
 import { today } from "../../shared/time";
 import { WorkflowPanel } from "./WorkflowPanel";
+import { ProjectConfigForm } from "./ProjectConfigForm";
 import {
   createWorkflow,
   nextActions,
@@ -154,6 +155,7 @@ function Dialog({
   busy?: boolean;
 }) {
   const dismiss = () => {
+    if (busy) return;
     if (!dirty || confirm("放弃未保存的修改？")) close();
   };
   useEffect(() => {
@@ -162,7 +164,7 @@ function Dialog({
     };
     document.addEventListener("keydown", cb);
     return () => document.removeEventListener("keydown", cb);
-  }, [dirty]);
+  }, [dirty, busy]);
   return (
     <div
       className="overlay"
@@ -198,6 +200,7 @@ type Modal =
   | { type: "item"; config?: ItemConfig; noteId?: string }
   | { type: "run"; id: string }
   | { type: "project"; project?: Project }
+  | { type: "project-config"; project?: Project }
   | { type: "log"; log?: WorkLog }
   | { type: "note"; note?: Note }
   | { type: "templates" | "import" | "report" | "settings" };
@@ -218,6 +221,7 @@ function App() {
     [failure, setFailure] = useState("");
   const [workflowDirty, setWorkflowDirty] = useState(false);
   const [projectTarget, setProjectTarget] = useState("");
+  const [projectReveal, setProjectReveal] = useState(0);
   const [menu, setMenu] = useState(false),
     [saving, setSaving] = useState(false);
   const operation = useRef(false);
@@ -233,7 +237,10 @@ function App() {
     }
   }, [toast]);
   const open = (m: Modal) => {
-    if (m.type === "project" && workflowDirty) {
+    if (
+      (m.type === "project" || m.type === "project-config") &&
+      workflowDirty
+    ) {
       setFailure("请先保存或放弃开发流程修改，再编辑项目基本信息。");
       return;
     }
@@ -670,6 +677,8 @@ function App() {
             card={card}
             perform={perform}
             initialProjectId={projectTarget}
+            onSelectProject={setProjectTarget}
+            reveal={projectReveal}
             workflowDirty={workflowDirty}
             onWorkflowDirty={setWorkflowDirty}
           />
@@ -692,6 +701,7 @@ function App() {
                   : "新建事项",
               run: "事项详情",
               project: "项目设置",
+              "project-config": "Agent 填写项目信息",
               log: "工作流水",
               note: "普通笔记",
               templates: "例行事项与配置",
@@ -710,7 +720,9 @@ function App() {
             )
               setDirty(true);
           }}
-          wide={["import", "report", "templates"].includes(modal.type)}
+          wide={["import", "report", "templates", "project-config"].includes(
+            modal.type,
+          )}
         >
           {failure && (
             <div className="error-banner" role="alert">
@@ -733,7 +745,22 @@ function App() {
             />
           )}
           {modal.type === "project" && (
-            <ProjectForm {...actions} project={modal.project} />
+            <ProjectForm {...actions} project={modal.project} open={open} />
+          )}
+          {modal.type === "project-config" && (
+            <ProjectConfigForm
+              project={modal.project}
+              onDirty={setDirty}
+              onBusy={setWorking}
+              onDone={(id) => {
+                finish();
+                setProjectTarget(id);
+                setProjectReveal((n) => n + 1);
+                setView("projects");
+                setToast("项目信息已从配置文件填入");
+                void load();
+              }}
+            />
           )}
           {modal.type === "log" && <LogForm {...actions} log={modal.log} />}
           {modal.type === "note" && (
@@ -1311,6 +1338,8 @@ function Projects({
   card,
   perform,
   initialProjectId,
+  onSelectProject,
+  reveal,
   workflowDirty,
   onWorkflowDirty,
 }: {
@@ -1319,11 +1348,16 @@ function Projects({
   card: (r: Run) => React.ReactNode;
   perform: Actions["perform"];
   initialProjectId: string;
+  onSelectProject: (id: string) => void;
+  reveal: number;
   workflowDirty: boolean;
   onWorkflowDirty: (dirty: boolean) => void;
 }) {
-  const [selected, setSelected] = useState(initialProjectId),
-    [showArchived, setShowArchived] = useState(false);
+  const selected = initialProjectId;
+  const [showArchived, setShowArchived] = useState(false);
+  useEffect(() => {
+    if (reveal) setShowArchived(true);
+  }, [reveal]);
   const projects = data.projects.filter((p) => showArchived || !p.archived);
   const project = projects.find((p) => p.id === selected) || projects[0];
   const runs = data.runs.filter(
@@ -1336,9 +1370,14 @@ function Projects({
           <p className="eyebrow">PROJECTS</p>
           <h1>看清进度，推进下一步</h1>
         </div>
-        <button className="primary" onClick={() => open({ type: "project" })}>
-          ＋ 新建项目
-        </button>
+        <div className="wf-actions">
+          <button onClick={() => open({ type: "project-config" })}>
+            Agent 填写项目
+          </button>
+          <button className="primary" onClick={() => open({ type: "project" })}>
+            ＋ 新建项目
+          </button>
+        </div>
       </div>
       <label className="inline-check">
         <input
@@ -1375,7 +1414,7 @@ function Projects({
                   )
                     return;
                   if (p.id !== project?.id) onWorkflowDirty(false);
-                  setSelected(p.id);
+                  onSelectProject(p.id);
                 }}
               >
                 <strong>{p.name}</strong>
@@ -1414,9 +1453,16 @@ function Projects({
                     · ID：{project.id}
                   </p>
                 </div>
-                <button onClick={() => open({ type: "project", project })}>
-                  编辑项目
-                </button>
+                <div className="wf-actions">
+                  <button
+                    onClick={() => open({ type: "project-config", project })}
+                  >
+                    导入 / 导出项目信息
+                  </button>
+                  <button onClick={() => open({ type: "project", project })}>
+                    编辑项目
+                  </button>
+                </div>
               </div>
               {project.update && (
                 <div className="project-update">
@@ -1430,6 +1476,9 @@ function Projects({
                 revision={data.revision}
                 today={data.today}
                 onDirty={onWorkflowDirty}
+                onProjectConfig={() =>
+                  open({ type: "project-config", project })
+                }
                 onReminder={(title, body, date) =>
                   open({
                     type: "item",
@@ -1583,7 +1632,8 @@ function ProjectForm({
   project,
   perform,
   finish,
-}: Actions & { project?: Project }) {
+  open,
+}: Actions & { project?: Project; open: (modal: Modal) => void }) {
   const [value, setValue] = useState<Project>(
       project || {
         id: "",
@@ -1622,6 +1672,15 @@ function ProjectForm({
           finish();
       }}
     >
+      <p className="hint">
+        也可以把完整项目信息交给 Agent 填写，导入文件后统一保存。
+      </p>
+      <button
+        type="button"
+        onClick={() => open({ type: "project-config", project })}
+      >
+        用 Agent 模板填写
+      </button>
       <label>
         项目名称
         <input

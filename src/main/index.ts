@@ -14,11 +14,12 @@ import {
   session,
 } from "electron";
 import { join, resolve } from "node:path";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, stat } from "node:fs/promises";
 import { z } from "zod";
 import { Store } from "./store";
 import { settingsSchema, dateSchema } from "../shared/contracts";
 import type { Run, ReportEntry } from "../shared/contracts";
+import { parseProjectConfig } from "../shared/project-config";
 
 app.setName("Kanban");
 const dataDir =
@@ -204,6 +205,31 @@ function registerHandlers(): void {
       ),
     "items.edit": (i, t, b) => store.editRun(id.parse(i), t, b),
     "projects.save": (p) => store.saveProject(p),
+    "projects.config.preview": (text, targetId) =>
+      store.previewProjectConfig(
+        z.string().max(2_000_000).parse(text),
+        targetId === undefined ? undefined : id.parse(targetId),
+      ),
+    "projects.config.commit": (token) =>
+      store.commitProjectConfig(id.parse(token)),
+    "projects.config.export": (projectId) =>
+      store.exportProjectConfig(
+        projectId === undefined ? undefined : id.parse(projectId),
+      ),
+    "projects.config.saveFile": async (text) => {
+      const config = parseProjectConfig(z.string().max(2_000_000).parse(text));
+      const r = await dialog.showSaveDialog(main, {
+        defaultPath: "kanban-project.json",
+        filters: [{ name: "项目配置 JSON", extensions: ["json"] }],
+      });
+      if (r.canceled || !r.filePath) return false;
+      await writeFile(
+        r.filePath,
+        JSON.stringify(config, null, 2) + "\n",
+        "utf8",
+      );
+      return true;
+    },
     "projects.workflow": (i, w, revision) =>
       store.saveWorkflow(
         id.parse(i),
@@ -238,7 +264,10 @@ function registerHandlers(): void {
         filters: [{ name: "JSON 配置", extensions: ["json"] }],
         properties: ["openFile"],
       });
-      return r.canceled ? null : readFile(r.filePaths[0], "utf8");
+      if (r.canceled) return null;
+      if ((await stat(r.filePaths[0])).size > 2_000_000)
+        throw new Error("配置文件不能超过 2 MB。");
+      return readFile(r.filePaths[0], "utf8");
     },
     "imports.export": async () => {
       const r = await dialog.showSaveDialog(main, {
@@ -359,6 +388,9 @@ function registerHandlers(): void {
     "reminders.list",
     "imports.preview",
     "imports.read",
+    "projects.config.preview",
+    "projects.config.export",
+    "projects.config.saveFile",
     "imports.export",
     "reports.preview",
     "reports.output",

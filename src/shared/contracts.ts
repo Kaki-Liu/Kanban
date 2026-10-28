@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { workflowSchema, type Workflow } from "./workflow";
+import type { ProjectConfigPreview } from "./project-config";
 
 export const dateSchema = z
   .string()
@@ -270,6 +271,13 @@ export interface DesktopAPI {
     editRun(id: string, title: string, body: string): Promise<void>;
   };
   projects: {
+    previewConfig(
+      text: string,
+      targetId?: string,
+    ): Promise<ProjectConfigPreview>;
+    commitConfig(token: string): Promise<string>;
+    exportConfig(id?: string): Promise<string>;
+    saveConfigFile(text: string): Promise<boolean>;
     save(input: ProjectInput): Promise<void>;
     saveWorkflow(
       id: string,

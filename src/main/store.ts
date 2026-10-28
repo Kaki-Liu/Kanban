@@ -4,6 +4,15 @@ import { mkdirSync, readFileSync, realpathSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { workflowSchema, type Workflow } from "../shared/workflow";
+import { mergeWorkflowImport } from "../shared/workflow-templates";
+import {
+  parseProjectConfig,
+  projectConfigText,
+  newProjectConfig,
+  projectConfigChanges,
+  type ProjectConfig,
+  type ProjectConfigPreview,
+} from "../shared/project-config";
 import {
   atTime,
   today,
@@ -69,6 +78,10 @@ function same(a: unknown, b: unknown): boolean {
 
 export class Store {
   db: DatabaseSync;
+  private projectPreviews = new Map<
+    string,
+    { config: ProjectConfig; projectId: string; revision: number }
+  >();
   private previews = new Map<
     string,
     { config: ImportConfig; revision: number; day: string }
@@ -456,6 +469,96 @@ export class Store {
       r.changedAt = this.now();
       this.putRun(r);
     });
+  }
+  private projectConfigResult(
+    config: ProjectConfig,
+    projectId: string,
+  ): { project: Project; previous?: Project; protectedCount: number } {
+    const row = this.db
+      .prepare("SELECT data FROM projects WHERE id=?")
+      .get(projectId) as Row | undefined;
+    const previous: Project | undefined = row
+      ? JSON.parse(row.data)
+      : undefined;
+    const project: Project = { ...config.project, id: projectId };
+    let protectedCount = 0;
+    if (project.workflow) {
+      const current =
+        previous?.workflow ||
+        workflowSchema.parse({ mode: project.workflow.mode });
+      const merged = mergeWorkflowImport(current, project.workflow);
+      project.workflow = merged.workflow;
+      protectedCount = merged.protectedCount;
+      this.markWorkflowStarted(project.workflow, previous?.workflow);
+    } else if (previous?.workflow) project.workflow = previous.workflow;
+    return { project, previous, protectedCount };
+  }
+  previewProjectConfig(text: string, targetId?: string): ProjectConfigPreview {
+    const config = parseProjectConfig(text);
+    if (targetId !== undefined) {
+      z.string().trim().min(1).max(200).parse(targetId);
+      this.projectExists(targetId);
+      if (config.project.id && config.project.id !== targetId)
+        throw new Error(
+          "配置中的项目 ID 与当前项目不匹配，请从当前项目导出后修改。",
+        );
+    }
+    const projectId = targetId || config.project.id || randomUUID();
+    const { project, previous, protectedCount } = this.projectConfigResult(
+      config,
+      projectId,
+    );
+    const token = randomUUID();
+    this.projectPreviews.clear();
+    this.projectPreviews.set(token, {
+      config,
+      projectId,
+      revision: this.revision(),
+    });
+    return {
+      token,
+      projectId,
+      name: project.name,
+      action: previous ? "update" : "create",
+      changes: projectConfigChanges(previous, project),
+      protectedCount,
+    };
+  }
+  commitProjectConfig(token: string): string {
+    const preview = this.projectPreviews.get(token);
+    if (!preview || preview.revision !== this.revision())
+      throw new Error("数据已变化或预览已失效，请重新校验并预览。");
+    const projectId = this.transaction(() => {
+      if (preview.revision !== this.revision())
+        throw new Error("数据已变化，请重新预览。");
+      const config = parseProjectConfig(JSON.stringify(preview.config));
+      const { project, previous } = this.projectConfigResult(
+        config,
+        preview.projectId,
+      );
+      this.db
+        .prepare(
+          "INSERT INTO projects(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+        )
+        .run(project.id, JSON.stringify(project));
+      if (project.workflow)
+        this.recordWorkflowCompletions(
+          project.id,
+          project.workflow,
+          previous?.workflow,
+        );
+      return project.id;
+    });
+    this.projectPreviews.delete(token);
+    return projectId;
+  }
+  exportProjectConfig(id?: string): string {
+    if (id === undefined) return newProjectConfig();
+    const row = this.db
+      .prepare("SELECT data FROM projects WHERE id=?")
+      .get(id) as Row | undefined;
+    if (!row) throw new Error("项目不存在");
+    return projectConfigText(JSON.parse(row.data));
   }
   saveProject(input: ProjectInput): void {
     const parsed = projectSchema.parse(input);
@@ -1067,6 +1170,7 @@ export class Store {
     });
     this.previews.clear();
     this.restores.clear();
+    this.projectPreviews.clear();
   }
   close(): void {
     this.db.close();

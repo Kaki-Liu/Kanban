@@ -1,6 +1,6 @@
 {
   "name": "kanban-local",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "本地工作看板",
   "author": "Kanban",
@@ -16,7 +16,8 @@
     "prepare:electron": "node -e \"require('electron')\"",
     "dist": "npm run build && npm run prepare:electron && electron-builder --win nsis --x64",
     "pack": "npm run build && npm run prepare:electron && electron-builder --win --dir",
-    "schema:workflow": "tsx scripts/workflow-schema.ts"
+    "schema:workflow": "tsx scripts/workflow-schema.ts",
+    "schema:project": "tsx scripts/project-schema.ts"
   },
   "dependencies": {
     "react": "19.3.1",

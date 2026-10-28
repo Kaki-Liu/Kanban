@@ -125,12 +125,14 @@ export function WorkflowPanel({
   today,
   onReminder,
   onDirty,
+  onProjectConfig,
 }: {
   project: Project;
   revision: number;
   today: string;
   onReminder: (title: string, body: string, date: string) => void;
   onDirty?: (dirty: boolean) => void;
+  onProjectConfig?: () => void;
 }) {
   const [workflow, setWorkflow] = useState<Workflow>(
     () => project.workflow || createWorkflow("novice"),
@@ -466,7 +468,10 @@ export function WorkflowPanel({
           </div>
         ) : (
           <>
-            <p className="wf-project-goal"><strong>本次目标：</strong>{workflow.goal || "先说明想为谁解决什么问题。"}</p>
+            <p className="wf-project-goal">
+              <strong>本次目标：</strong>
+              {workflow.goal || "先说明想为谁解决什么问题。"}
+            </p>
             <div className="wf-tabs" aria-label="开发流程视图">
               {[
                 ["route", "路线与目标"],
@@ -1322,6 +1327,11 @@ export function WorkflowPanel({
                     导出当前项目的目标、流程和任务。普通笔记、个人流水不会混入。参与人信息和你填写在流程中的内容会包含在内，请先检查预览。
                   </p>
                   <div className="wf-actions">
+                    {onProjectConfig && (
+                      <button onClick={onProjectConfig}>
+                        完整项目信息文件
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         showExport(
