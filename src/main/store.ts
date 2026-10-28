@@ -3,6 +3,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { mkdirSync, readFileSync, realpathSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
+import { workflowSchema, type Workflow } from "../shared/workflow";
 import {
   atTime,
   today,
@@ -134,6 +135,37 @@ export class Store {
       ).value,
     );
   }
+  async prepareVersion(version: string): Promise<void> {
+    z.string()
+      .max(100)
+      .regex(/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/)
+      .parse(version);
+    const previous = this.db
+      .prepare("SELECT value FROM meta WHERE key='app_version'")
+      .get() as Row | undefined;
+    if (previous?.value === version) return;
+    const hasData = ["projects", "templates", "logs", "notes"].some((table) =>
+      Boolean(this.db.prepare(`SELECT 1 FROM ${table} LIMIT 1`).get()),
+    );
+    if (hasData) {
+      const directory = join(dirname(this.path), "backups");
+      mkdirSync(directory, { recursive: true });
+      await this.createBackup(
+        join(
+          directory,
+          `before-upgrade-${version}-${Date.now()}-${randomUUID().slice(0, 8)}.kanban-backup`,
+        ),
+      );
+    }
+    // Mark only after a consistent snapshot succeeds; a failed startup can safely retry.
+    this.transaction(() => {
+      this.db
+        .prepare(
+          "INSERT INTO meta(key,value) VALUES('app_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        )
+        .run(version);
+    });
+  }
   settings(): Settings {
     return settingsSchema.parse(
       JSON.parse(
@@ -184,8 +216,7 @@ export class Store {
   }
   getRun(id: string): Run {
     const r = this.db.prepare("SELECT data FROM runs WHERE id=?").get(id) as
-      | Row
-      | undefined;
+      Row | undefined;
     if (!r) throw new Error("事项不存在");
     return JSON.parse(r.data);
   }
@@ -431,11 +462,31 @@ export class Store {
     this.transaction(() => {
       const { logUpdate, ...p } = parsed;
       const project: Project = { ...p, id: p.id || randomUUID() };
+      const oldRow = this.db
+        .prepare("SELECT data FROM projects WHERE id=?")
+        .get(project.id) as Row | undefined;
+      const old: Project | undefined = oldRow
+        ? JSON.parse(oldRow.data)
+        : undefined;
+      if (old) {
+        if (
+          p.workflow &&
+          !same(
+            p.workflow,
+            old.workflow ? workflowSchema.parse(old.workflow) : undefined,
+          )
+        )
+          throw new Error("开发流程已变化，请在开发流程页面刷新后保存");
+        project.workflow = old.workflow;
+      }
+      if (!old && project.workflow) this.markWorkflowStarted(project.workflow);
       this.db
         .prepare(
           "INSERT INTO projects(id,data) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
         )
         .run(project.id, JSON.stringify(project));
+      if (!old && project.workflow)
+        this.recordWorkflowCompletions(project.id, project.workflow);
       if (logUpdate && project.update.trim())
         this.putLog({
           body: project.update,
@@ -443,6 +494,86 @@ export class Store {
           projectId: project.id,
         });
     });
+  }
+  saveWorkflow(
+    projectId: string,
+    input: Workflow,
+    expectedRevision: number,
+  ): void {
+    z.string().min(1).max(200).parse(projectId);
+    z.number().int().nonnegative().parse(expectedRevision);
+    const workflow = workflowSchema.parse(input);
+    this.transaction(() => {
+      if (expectedRevision !== this.revision())
+        throw new Error("数据已变化，请刷新后重新检查草稿再保存");
+      const row = this.db
+        .prepare("SELECT data FROM projects WHERE id=?")
+        .get(projectId) as Row | undefined;
+      if (!row) throw new Error("项目不存在");
+      const project: Project = JSON.parse(row.data);
+      const previous = project.workflow;
+      this.markWorkflowStarted(workflow, previous);
+      project.workflow = workflow;
+      this.db
+        .prepare("UPDATE projects SET data=? WHERE id=?")
+        .run(JSON.stringify(project), projectId);
+      this.recordWorkflowCompletions(projectId, workflow, previous);
+    });
+  }
+  private markWorkflowStarted(workflow: Workflow, previous?: Workflow): void {
+    const oldTasks = new Map(previous?.tasks.map((task) => [task.id, task]));
+    const started = (task: Workflow["tasks"][number] | undefined): boolean =>
+      Boolean(
+        task &&
+        (task.hasStarted ||
+          task.state !== "todo" ||
+          task.evidence.trim() ||
+          task.blocker.trim() ||
+          task.handoff.status !== "draft"),
+      );
+    for (const task of workflow.tasks) {
+      task.hasStarted = started(task) || started(oldTasks.get(task.id));
+    }
+  }
+  private recordWorkflowCompletions(
+    projectId: string,
+    workflow: Workflow,
+    previous?: Workflow,
+  ): void {
+    for (const task of workflow.tasks) {
+      if (task.state !== "done") continue;
+      const oldTask = previous?.tasks.find((entry) => entry.id === task.id);
+      if (
+        oldTask?.state === "done" &&
+        oldTask.title === task.title &&
+        oldTask.evidence === task.evidence
+      )
+        continue;
+      // One stable work-log entry survives reopen/recomplete and avoids duplicate report material.
+      const logId = `workflow-${createHash("sha256")
+        .update(JSON.stringify([projectId, task.id]))
+        .digest("hex")}`;
+      const oldRow = this.db
+        .prepare("SELECT data FROM logs WHERE id=?")
+        .get(logId) as Row | undefined;
+      const old: WorkLog | undefined = oldRow
+        ? JSON.parse(oldRow.data)
+        : undefined;
+      const log: WorkLog = {
+        id: logId,
+        body: `完成开发任务：${task.title}\n\n${task.evidence}`,
+        date: oldTask?.state === "done" && old ? old.date : this.day(),
+        projectId,
+        runId: null,
+        createdAt: old?.createdAt || this.now(),
+        updatedAt: this.now(),
+      };
+      this.db
+        .prepare(
+          "INSERT INTO logs(id,data,run_id,project_id) VALUES(?,?,NULL,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data",
+        )
+        .run(log.id, JSON.stringify(log), projectId);
+    }
   }
   private putLog(input: LogInput): void {
     const parsed = logSchema.parse(input);

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { workflowSchema, type Workflow } from "./workflow";
 
 export const dateSchema = z
   .string()
@@ -121,11 +122,7 @@ export interface Template {
   noteId: string | null;
 }
 export type RunState =
-  | "pending"
-  | "doing"
-  | "completed"
-  | "skipped"
-  | "withdrawn";
+  "pending" | "doing" | "completed" | "skipped" | "withdrawn";
 export interface Run {
   id: string;
   templateId: string;
@@ -152,6 +149,7 @@ export const projectSchema = z
     update: textSchema.default(""),
     archived: z.boolean().default(false),
     logUpdate: z.boolean().default(false),
+    workflow: workflowSchema.optional(),
   })
   .strict();
 export type ProjectInput = z.input<typeof projectSchema>;
@@ -164,6 +162,7 @@ export interface Project {
   progress: number;
   update: string;
   archived: boolean;
+  workflow?: Workflow;
 }
 export const logSchema = z
   .object({
@@ -270,7 +269,14 @@ export interface DesktopAPI {
     ): Promise<void>;
     editRun(id: string, title: string, body: string): Promise<void>;
   };
-  projects: { save(input: ProjectInput): Promise<void> };
+  projects: {
+    save(input: ProjectInput): Promise<void>;
+    saveWorkflow(
+      id: string,
+      workflow: Workflow,
+      expectedRevision: number,
+    ): Promise<void>;
+  };
   records: {
     saveLog(input: LogInput): Promise<void>;
     deleteLog(id: string): Promise<void>;
@@ -304,6 +310,7 @@ export interface DesktopAPI {
   };
   settings: { save(settings: Settings): Promise<void> };
   window: {
+    copyText(text: string): Promise<void>;
     close(): Promise<void>;
     dirty(value: boolean): void;
     openExternal(url: string): Promise<void>;

@@ -16,7 +16,11 @@ const api: DesktopAPI = {
       call("items.state", id, state, result, reason),
     editRun: (id, title, body) => call("items.edit", id, title, body),
   },
-  projects: { save: (input) => call("projects.save", input) },
+  projects: {
+    save: (input) => call("projects.save", input),
+    saveWorkflow: (id, workflow, revision) =>
+      call("projects.workflow", id, workflow, revision),
+  },
   records: {
     saveLog: (input) => call("logs.save", input),
     deleteLog: (id) => call("logs.delete", id),
@@ -46,6 +50,7 @@ const api: DesktopAPI = {
   },
   settings: { save: (s) => call("settings.save", s) },
   window: {
+    copyText: (text) => call("window.copyText", text),
     close: () => call("window.close"),
     dirty: (value) => ipcRenderer.send("kb:dirty", value),
     openExternal: (url) => call("window.external", url),

@@ -15,6 +15,13 @@ import type {
   BackupPreview,
 } from "../../shared/contracts";
 import { today } from "../../shared/time";
+import { WorkflowPanel } from "./WorkflowPanel";
+import {
+  createWorkflow,
+  nextActions,
+  workflowModes,
+} from "../../shared/workflow-templates";
+import type { Workflow } from "../../shared/workflow";
 import "./styles.css";
 
 declare global {
@@ -209,14 +216,16 @@ function App() {
     [quickText, setQuickText] = useState(""),
     [toast, setToast] = useState(""),
     [failure, setFailure] = useState("");
+  const [workflowDirty, setWorkflowDirty] = useState(false);
+  const [projectTarget, setProjectTarget] = useState("");
   const [menu, setMenu] = useState(false),
     [saving, setSaving] = useState(false);
   const operation = useRef(false);
   const [working, setWorking] = useState(false);
   useEffect(() => {
-    api.window.dirty(dirty || Boolean(quickText));
+    api.window.dirty(dirty || workflowDirty || Boolean(quickText));
     return () => api.window.dirty(false);
-  }, [dirty, quickText]);
+  }, [dirty, workflowDirty, quickText]);
   useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(""), 3500);
@@ -224,6 +233,10 @@ function App() {
     }
   }, [toast]);
   const open = (m: Modal) => {
+    if (m.type === "project" && workflowDirty) {
+      setFailure("请先保存或放弃开发流程修改，再编辑项目基本信息。");
+      return;
+    }
     if (dirty && !confirm("放弃未保存的修改？")) return;
     setDirty(false);
     setFailure("");
@@ -333,7 +346,16 @@ function App() {
             <button
               key={key}
               className={view === key ? "selected" : ""}
-              onClick={() => setView(key as typeof view)}
+              onClick={() => {
+                if (
+                  key !== view &&
+                  workflowDirty &&
+                  !confirm("离开项目将放弃未保存的开发流程修改，继续？")
+                )
+                  return;
+                if (key !== view) setWorkflowDirty(false);
+                setView(key as typeof view);
+              }}
             >
               <span>{icon}</span>
               {label}
@@ -450,6 +472,73 @@ function App() {
                 </button>
               </div>
             </section>
+            {data.projects.some(
+              (p) =>
+                !p.archived &&
+                p.state !== "completed" &&
+                p.state !== "paused" &&
+                p.workflow,
+            ) && (
+              <section className="development-today">
+                <div className="section-heading">
+                  <h2>项目下一步</h2>
+                  <span className="muted">围绕当前目标推进</span>
+                </div>
+                <div className="development-next-grid">
+                  {data.projects
+                    .filter(
+                      (p) =>
+                        !p.archived &&
+                        p.state !== "completed" &&
+                        p.state !== "paused" &&
+                        p.workflow,
+                    )
+                    .slice(0, 6)
+                    .map((p) => {
+                      const task = nextActions(p.workflow!)[0];
+                      const milestone =
+                        p.workflow!.milestones.find(
+                          (m) => m.state === "active",
+                        ) ||
+                        p.workflow!.milestones.find(
+                          (m) => m.state === "pending",
+                        );
+                      const waiting = p.workflow!.decisions.filter(
+                        (d) =>
+                          d.status === "pending" &&
+                          d.followUpDate &&
+                          d.followUpDate <= data.today,
+                      ).length;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            setProjectTarget(p.id);
+                            setView("projects");
+                          }}
+                        >
+                          <small>
+                            {p.name}
+                            {waiting > 0 ? ` · ${waiting} 项沟通待跟进` : ""}
+                          </small>
+                          <strong>
+                            {task?.title ||
+                              milestone?.title ||
+                              "整理本版结果，规划下一步"}
+                          </strong>
+                          <span>
+                            {task
+                              ? task.state === "review"
+                                ? "验证结果并记录验收"
+                                : "继续推进 →"
+                              : "打开开发引导 →"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </section>
+            )}
             <div className="metrics">
               <div>
                 <span>今日待处理</span>
@@ -575,7 +664,15 @@ function App() {
           </div>
         )}
         {view === "projects" && (
-          <Projects data={data} open={open} card={card} perform={perform} />
+          <Projects
+            data={data}
+            open={open}
+            card={card}
+            perform={perform}
+            initialProjectId={projectTarget}
+            workflowDirty={workflowDirty}
+            onWorkflowDirty={setWorkflowDirty}
+          />
         )}
         {view === "records" && <Records data={data} open={open} />}
       </main>
@@ -1213,13 +1310,19 @@ function Projects({
   open,
   card,
   perform,
+  initialProjectId,
+  workflowDirty,
+  onWorkflowDirty,
 }: {
   data: Snapshot;
   open: (m: Modal) => void;
   card: (r: Run) => React.ReactNode;
   perform: Actions["perform"];
+  initialProjectId: string;
+  workflowDirty: boolean;
+  onWorkflowDirty: (dirty: boolean) => void;
 }) {
-  const [selected, setSelected] = useState(""),
+  const [selected, setSelected] = useState(initialProjectId),
     [showArchived, setShowArchived] = useState(false);
   const projects = data.projects.filter((p) => showArchived || !p.archived);
   const project = projects.find((p) => p.id === selected) || projects[0];
@@ -1241,7 +1344,17 @@ function Projects({
         <input
           type="checkbox"
           checked={showArchived}
-          onChange={(e) => setShowArchived(e.target.checked)}
+          onChange={(e) => {
+            const leavesCurrentProject = !e.target.checked && project?.archived;
+            if (
+              leavesCurrentProject &&
+              workflowDirty &&
+              !confirm("切换项目列表将放弃未保存的开发流程修改，继续？")
+            )
+              return;
+            if (leavesCurrentProject) onWorkflowDirty(false);
+            setShowArchived(e.target.checked);
+          }}
         />
         显示归档项目
       </label>
@@ -1254,15 +1367,30 @@ function Projects({
               <button
                 className={project?.id === p.id ? "active" : ""}
                 key={p.id}
-                onClick={() => setSelected(p.id)}
+                onClick={() => {
+                  if (
+                    p.id !== project?.id &&
+                    workflowDirty &&
+                    !confirm("切换项目将放弃未保存的开发流程修改，继续？")
+                  )
+                    return;
+                  if (p.id !== project?.id) onWorkflowDirty(false);
+                  setSelected(p.id);
+                }}
               >
                 <strong>{p.name}</strong>
                 <small>
-                  {states[p.state]} · {p.progress}%
+                  {p.workflow
+                    ? `${p.workflow.milestones.filter((m) => m.state === "completed").length}/${p.workflow.milestones.length} 个里程碑已验收`
+                    : `${states[p.state]} · ${p.progress}%`}
                   {p.archived ? " · 已归档" : ""}
                 </small>
                 <div className="progress-track">
-                  <i style={{ width: `${p.progress}%` }} />
+                  <i
+                    style={{
+                      width: `${p.workflow ? (100 * p.workflow.milestones.filter((m) => m.state === "completed").length) / Math.max(1, p.workflow.milestones.length) : p.progress}%`,
+                    }}
+                  />
                 </div>
               </button>
             ))}
@@ -1279,8 +1407,11 @@ function Projects({
                     {project.description || "暂无项目说明"}
                   </p>
                   <p className="meta">
-                    负责人：{project.owner || "未设置"} · 项目进度手动维护 ·
-                    ID：{project.id}
+                    负责人：{project.owner || "未设置"} ·{" "}
+                    {project.workflow
+                      ? "开发流程按里程碑验收"
+                      : "项目进度手动维护"}{" "}
+                    · ID：{project.id}
                   </p>
                 </div>
                 <button onClick={() => open({ type: "project", project })}>
@@ -1293,85 +1424,115 @@ function Projects({
                   <Markdown text={project.update} />
                 </div>
               )}
-              <div className="section-heading">
-                <h2>项目任务</h2>
-                <button
-                  onClick={() =>
-                    open({
-                      type: "item",
-                      config: {
-                        id: crypto.randomUUID(),
-                        title: "",
-                        type: "task",
-                        project_id: project.id,
-                        content_markdown: "",
-                        checklist: [],
-                        schedule: {
-                          frequency: "once",
-                          date: data.today,
-                          timezone: "Asia/Shanghai",
-                        },
-                        reminder: { popup: false, snooze_minutes: 10 },
+              <WorkflowPanel
+                key={project.id}
+                project={project}
+                revision={data.revision}
+                today={data.today}
+                onDirty={onWorkflowDirty}
+                onReminder={(title, body, date) =>
+                  open({
+                    type: "item",
+                    config: {
+                      id: crypto.randomUUID(),
+                      title,
+                      type: "task",
+                      project_id: project.id,
+                      content_markdown: `${body}${date ? `\n约定跟进日期：${date}` : ""}`,
+                      checklist: [],
+                      schedule: {
+                        frequency: "once",
+                        date: date && date > data.today ? date : data.today,
+                        time: "09:00",
+                        timezone: "Asia/Shanghai",
                       },
-                    })
-                  }
-                >
-                  ＋ 添加任务
-                </button>
-              </div>
-              <div className="board">
-                {[
-                  ["pending", "待办"],
-                  ["doing", "进行中"],
-                  ["completed", "已完成"],
-                ].map(([state, label]) => (
-                  <section className="board-column" key={state}>
-                    <h3>
-                      <i className={state} />
-                      {label}
-                      <small>
-                        {
-                          runs.filter(
-                            (r) =>
-                              r.config.type === "task" && r.state === state,
-                          ).length
-                        }
-                      </small>
-                    </h3>
-                    {runs
-                      .filter(
-                        (r) => r.config.type === "task" && r.state === state,
-                      )
-                      .map((r) => (
-                        <div className="board-task" key={r.id}>
-                          <button
-                            className="board-title"
-                            onClick={() => open({ type: "run", id: r.id })}
-                          >
-                            {r.config.title}
-                          </button>
-                          <p className="meta">{r.date}</p>
-                          <select
-                            aria-label={`移动 ${r.config.title}`}
-                            value={r.state}
-                            onChange={(e) =>
-                              void perform(() =>
-                                api.items.state(
-                                  r.id,
-                                  e.target.value as Run["state"],
-                                ),
-                              )
-                            }
-                          >
-                            <option value="pending">待办</option>
-                            <option value="doing">进行中</option>
-                            <option value="completed">已完成</option>
-                          </select>
-                        </div>
-                      ))}
-                  </section>
-                ))}
-              </div>
+                      reminder: { popup: true, snooze_minutes: 10 },
+                    },
+                  })
+                }
+              />
+              <details className="section-details" open={!project.workflow}>
+                <summary>日程事项与原有任务</summary>
+                <div className="section-heading">
+                  <h2>项目任务</h2>
+                  <button
+                    onClick={() =>
+                      open({
+                        type: "item",
+                        config: {
+                          id: crypto.randomUUID(),
+                          title: "",
+                          type: "task",
+                          project_id: project.id,
+                          content_markdown: "",
+                          checklist: [],
+                          schedule: {
+                            frequency: "once",
+                            date: data.today,
+                            timezone: "Asia/Shanghai",
+                          },
+                          reminder: { popup: false, snooze_minutes: 10 },
+                        },
+                      })
+                    }
+                  >
+                    ＋ 添加任务
+                  </button>
+                </div>
+                <div className="board">
+                  {[
+                    ["pending", "待办"],
+                    ["doing", "进行中"],
+                    ["completed", "已完成"],
+                  ].map(([state, label]) => (
+                    <section className="board-column" key={state}>
+                      <h3>
+                        <i className={state} />
+                        {label}
+                        <small>
+                          {
+                            runs.filter(
+                              (r) =>
+                                r.config.type === "task" && r.state === state,
+                            ).length
+                          }
+                        </small>
+                      </h3>
+                      {runs
+                        .filter(
+                          (r) => r.config.type === "task" && r.state === state,
+                        )
+                        .map((r) => (
+                          <div className="board-task" key={r.id}>
+                            <button
+                              className="board-title"
+                              onClick={() => open({ type: "run", id: r.id })}
+                            >
+                              {r.config.title}
+                            </button>
+                            <p className="meta">{r.date}</p>
+                            <select
+                              aria-label={`移动 ${r.config.title}`}
+                              value={r.state}
+                              onChange={(e) =>
+                                void perform(() =>
+                                  api.items.state(
+                                    r.id,
+                                    e.target.value as Run["state"],
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="pending">待办</option>
+                              <option value="doing">进行中</option>
+                              <option value="completed">已完成</option>
+                            </select>
+                          </div>
+                        ))}
+                    </section>
+                  ))}
+                </div>
+              </details>
               <div className="section-heading">
                 <h2>今天的项目检查</h2>
                 <span className="muted">
@@ -1436,6 +1597,10 @@ function ProjectForm({
       },
     ),
     [logUpdate, setLogUpdate] = useState(false);
+  const [development, setDevelopment] = useState(false);
+  const [mode, setMode] = useState<Workflow["mode"]>("novice");
+  const [collaboration, setCollaboration] =
+    useState<Workflow["collaboration"]>("solo");
   return (
     <form
       onSubmit={async (e) => {
@@ -1447,6 +1612,9 @@ function ProjectForm({
                 ...value,
                 id: value.id || undefined,
                 logUpdate,
+                ...(!project && development
+                  ? { workflow: createWorkflow(mode, collaboration) }
+                  : {}),
               }),
             "项目已保存",
           )
@@ -1471,6 +1639,52 @@ function ProjectForm({
           onChange={(e) => setValue({ ...value, description: e.target.value })}
         />
       </label>
+      {!project && (
+        <>
+          <label>
+            项目类型
+            <select
+              value={development ? "development" : "ordinary"}
+              onChange={(e) => setDevelopment(e.target.value === "development")}
+            >
+              <option value="ordinary">普通项目</option>
+              <option value="development">程序开发 · 带路线与下一步引导</option>
+            </select>
+          </label>
+          {development && (
+            <div className="form-row">
+              <label>
+                开发路线
+                <select
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value as Workflow["mode"])}
+                >
+                  {workflowModes.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.label} · {m.subtitle}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                协作方式
+                <select
+                  value={collaboration}
+                  onChange={(e) =>
+                    setCollaboration(
+                      e.target.value as Workflow["collaboration"],
+                    )
+                  }
+                >
+                  <option value="solo">个人开发</option>
+                  <option value="team">小组合作</option>
+                  <option value="cross">跨部门 / 委托开发</option>
+                </select>
+              </label>
+            </div>
+          )}
+        </>
+      )}
       <div className="form-row">
         <label>
           负责人 · 仅文字记录

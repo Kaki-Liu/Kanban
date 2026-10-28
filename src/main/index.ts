@@ -204,6 +204,12 @@ function registerHandlers(): void {
       ),
     "items.edit": (i, t, b) => store.editRun(id.parse(i), t, b),
     "projects.save": (p) => store.saveProject(p),
+    "projects.workflow": (i, w, revision) =>
+      store.saveWorkflow(
+        id.parse(i),
+        w,
+        z.number().int().nonnegative().parse(revision),
+      ),
     "logs.save": (p) => store.saveLog(p),
     "logs.delete": (i) => store.deleteLog(id.parse(i)),
     "notes.save": (p) => store.saveNote(p),
@@ -339,6 +345,8 @@ function registerHandlers(): void {
         throw e;
       }
     },
+    "window.copyText": (text) =>
+      clipboard.writeText(z.string().max(2_000_000).parse(text)),
     "window.external": async (url) => {
       const parsed = new URL(z.string().max(4000).parse(url));
       if (!["http:", "https:"].includes(parsed.protocol))
@@ -357,6 +365,7 @@ function registerHandlers(): void {
     "backup.preview",
     "backup.create",
     "window.external",
+    "window.copyText",
   ]);
   for (const [channel, fn] of Object.entries(handlers))
     ipcMain.handle(`kb:${channel}`, async (event, ...args) => {
@@ -406,6 +415,7 @@ if (lock)
     .whenReady()
     .then(async () => {
       store = new Store(join(dataDir, "kanban.db"));
+      await store.prepareVersion(app.getVersion());
       session.defaultSession.setPermissionRequestHandler(
         (_web, _permission, callback) => callback(false),
       );

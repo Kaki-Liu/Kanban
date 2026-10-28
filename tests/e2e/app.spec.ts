@@ -204,6 +204,18 @@ test("提醒不抢焦点、托盘驻留、稍后与完成取消", async () => {
 });
 
 test("备份预览与恢复完整闭环，快速记录窗口和快捷键注册", async () => {
+  // The user's running app may already own the default shortcut. Configure an
+  // independent shortcut in this test's isolated profile and verify it directly.
+  const testShortcut = await page.evaluate(async () => {
+    const api = (window as unknown as { kanban: DesktopAPI }).kanban;
+    for (const shortcut of ["Ctrl+Alt+Shift+F9", "Ctrl+Alt+Shift+F10", "Ctrl+Alt+Shift+F11"]) {
+      try {
+        await api.settings.save({ shortcut, autoStart: false });
+        return shortcut;
+      } catch { /* Try another shortcut without touching the user's profile. */ }
+    }
+    throw new Error("No isolated test shortcut is available");
+  });
   const backupPath = join(dataDir, "ui-backup.kanban-backup");
   await application.evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
@@ -232,9 +244,8 @@ test("备份预览与恢复完整闭环，快速记录窗口和快捷键注册",
     )
     .toBe(false);
   expect(
-    await application.evaluate(({ globalShortcut }) =>
-      globalShortcut.isRegistered("Ctrl+Alt+J"),
-    ),
+    await application.evaluate(({ globalShortcut }, shortcut) =>
+      globalShortcut.isRegistered(shortcut), testShortcut),
   ).toBe(true);
   await page.getByRole("button", { name: "⚙ 设置与备份" }).click();
   await page.getByRole("button", { name: "导出完整备份" }).click();

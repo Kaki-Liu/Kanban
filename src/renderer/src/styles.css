@@ -8,6 +8,30 @@
   --muted: #7b8495;
   --border: #e4e8f0;
 }
+.development-today {
+  margin: 24px 0;
+}
+.development-next-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.development-next-grid button {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 10px;
+  padding: 16px;
+}
+.development-next-grid small,
+.development-next-grid span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.development-next-grid strong {
+  color: #243045;
+  overflow-wrap: anywhere;
+}
 fieldset {
   border: 0;
   padding: 0;

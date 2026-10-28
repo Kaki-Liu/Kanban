@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "kind": "development-workflow",
+  "project_id": "replace-with-exported-project-id",
+  "workflow": {
+    "mode": "novice",
+    "collaboration": "team",
+    "guidance": "detailed",
+    "goal": "让值班人员按时完成检查，并记录结果供负责人查看。",
+    "scope": "本地创建检查、定时提醒、完成记录和工作素材导出。",
+    "outOfScope": "首版不做账号、服务器、跨电脑同步或自动发送消息。",
+    "acceptance": "关闭主窗口仍会提醒；重启后结果保留；可整理一周工作素材。",
+    "participants": [
+      {
+        "id": "project-owner",
+        "name": "项目负责人",
+        "role": "确认范围和优先级",
+        "contact": "由本地操作者联系"
+      },
+      {
+        "id": "reviewer",
+        "name": "值班负责人",
+        "role": "提供检查样例并试用验收",
+        "contact": ""
+      }
+    ],
+    "milestones": [
+      {
+        "id": "milestone-1",
+        "title": "说清要解决的问题",
+        "goal": "写下谁在什么情况下遇到什么麻烦，以及想得到的结果。",
+        "acceptance": "有一个真实场景、一句目标，并知道谁来试用。",
+        "state": "active",
+        "dueDate": "",
+        "evidence": ""
+      },
+      {
+        "id": "milestone-2",
+        "title": "划定首版范围",
+        "goal": "选一条核心使用流程，列出本次不做的功能与验收条件。",
+        "acceptance": "能按实际操作判断首版成功与否。",
+        "state": "pending",
+        "dueDate": "",
+        "evidence": ""
+      },
+      {
+        "id": "milestone-3",
+        "title": "确认界面与操作",
+        "goal": "画草图或让 Agent 做演示，按使用者身份走一遍。",
+        "acceptance": "能够描述每一步操作和对应结果，疑问有记录。",
+        "state": "pending",
+        "dueDate": "",
+        "evidence": ""
+      },
+      {
+        "id": "milestone-4",
+        "title": "让程序第一次运行",
+        "goal": "让 Agent 根据已确定范围提出实现方案并运行基础程序，记录启动方式。",
+        "acceptance": "程序可运行，启动方法已记录，关键技术风险有验证。",
+        "state": "pending",
+        "dueDate": "",
+        "evidence": ""
+      },
+      {
+        "id": "milestone-5",
+        "title": "做通核心流程",
+        "goal": "完成一个从输入到结果的真实场景，立即验证保存与重启。",
+        "acceptance": "真实样例跑通，预期结果和异常情况有验证记录。",
+        "state": "pending",
+        "dueDate": "",
+        "evidence": ""
+      },
+      {
+        "id": "milestone-6",
+        "title": "分批补齐功能",
+        "goal": "每次添加一个必要功能，验证正常与失败情况，再继续下一项。",
+        "acceptance": "本次范围逐项有实现结果和验收依据。",
+        "state": "pending",
+        "dueDate": "",
+        "evidence": ""
+      },
+      {
+        "id": "milestone-7",
+        "title": "验收与安装交付",
+        "goal": "按清单试用打包版本，检查安装、数据保留和使用说明。",
+        "acceptance": "有可使用版本、实际验证记录、已知问题及启动说明。",
+        "state": "pending",
+        "dueDate": "",
+        "evidence": ""
+      },
+      {
+        "id": "milestone-8",
+        "title": "试用反馈与下一版",
+        "goal": "收集真实使用问题，确认下一轮最值得改的一件事。",
+        "acceptance": "本版有结论，反馈进入下一轮，不无限延长当前版本。",
+        "state": "pending",
+        "dueDate": "",
+        "evidence": ""
+      }
+    ],
+    "tasks": [
+      {
+        "id": "confirm-first-scenario",
+        "title": "确认一次值班检查的完整场景",
+        "milestoneId": "milestone-1",
+        "owner": "项目负责人",
+        "contributors": "",
+        "reviewer": "值班负责人",
+        "receiver": "值班负责人",
+        "boundary": "确认首版使用场景与验收条件，不承诺未来同步能力。",
+        "input": "值班负责人提供检查内容和时间样例。",
+        "output": "一份双方能理解的场景说明和验收清单。",
+        "acceptance": "说明谁在什么时候检查什么，以及怎样判断已完成。",
+        "dependsOn": [],
+        "state": "todo",
+        "hasStarted": false,
+        "priority": "high",
+        "blocker": "",
+        "followUpDate": "",
+        "evidence": "",
+        "handoff": {
+          "status": "draft",
+          "artifacts": "",
+          "instructions": "",
+          "verification": "",
+          "risks": "",
+          "nextAction": "",
+          "note": ""
+        }
+      }
+    ],
+    "decisions": [
+      {
+        "id": "confirm-offline-scope",
+        "kind": "decision",
+        "topic": "确认首版仅在本机使用",
+        "people": "项目负责人、值班负责人",
+        "conclusion": "",
+        "impact": "影响账户、服务器和数据同步是否进入本版。",
+        "date": "",
+        "followUpDate": "",
+        "status": "pending"
+      }
+    ]
+  }
+}
