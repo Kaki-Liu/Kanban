@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { workflowSchema, type Workflow } from "./workflow";
 import type { ProjectConfigPreview } from "./project-config";
+import type { WidgetSnapshot } from "./widget";
+export type { WidgetSnapshot } from "./widget";
 
 export const dateSchema = z
   .string()
@@ -258,6 +260,13 @@ export interface ReportQuery {
 }
 export interface DesktopAPI {
   snapshot(): Promise<Snapshot>;
+  widget: {
+    get(): Promise<WidgetSnapshot>;
+    show(): Promise<void>;
+    setPinned(pinned: boolean): Promise<void>;
+    hide(): Promise<void>;
+    openMain(runId?: string): Promise<void>;
+  };
   items: {
     save(config: ItemConfig, noteId?: string): Promise<void>;
     setMode(id: string, paused: boolean, archived: boolean): Promise<void>;

@@ -8,6 +8,13 @@ async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
 }
 const api: DesktopAPI = {
   snapshot: () => call("snapshot"),
+  widget: {
+    get: () => call("widget.get"),
+    show: () => call("widget.show"),
+    setPinned: (pinned) => call("widget.setPinned", pinned),
+    hide: () => call("widget.hide"),
+    openMain: (runId) => call("widget.openMain", runId),
+  },
   items: {
     save: (c, n) => call("items.save", c, n),
     setMode: (id, p, a) => call("items.mode", id, p, a),

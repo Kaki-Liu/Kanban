@@ -20,6 +20,11 @@ import { Store } from "./store";
 import { settingsSchema, dateSchema } from "../shared/contracts";
 import type { Run, ReportEntry } from "../shared/contracts";
 import { parseProjectConfig } from "../shared/project-config";
+import {
+  clampWidgetBounds,
+  widgetSize,
+  type WidgetPreferences,
+} from "../shared/widget";
 
 app.setName("Kanban");
 const dataDir =
@@ -33,12 +38,16 @@ let store: Store;
 let main: BrowserWindow,
   quick: BrowserWindow,
   reminderWindow: BrowserWindow,
+  widgetWindow: BrowserWindow,
   tray: Tray;
 let quitting = false,
   locked = false,
   ticking = false,
   firstTrayClose = true;
 let timer: ReturnType<typeof setInterval> | undefined;
+let widgetSaveTimer: ReturnType<typeof setTimeout> | undefined;
+let widgetPreferences: WidgetPreferences;
+let widgetReady = false;
 let activeReminders = new Set<string>();
 const dirty = new Map<number, boolean>();
 const id = z.string().min(1).max(200);
@@ -53,6 +62,49 @@ function showMain(runId?: string): void {
   main.show();
   main.focus();
   if (runId) main.webContents.send("kb:open-run", runId);
+}
+function updateWidgetPreferences(patch: Partial<WidgetPreferences>): void {
+  const next = { ...widgetPreferences, ...patch };
+  store.saveWidgetPreferences(next);
+  widgetPreferences = next;
+}
+function positionWidget(): void {
+  const bounds = widgetPreferences.bounds;
+  const area = (
+    bounds
+      ? screen.getDisplayMatching(bounds)
+      : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+  ).workArea;
+  const clamped = clampWidgetBounds(bounds, area);
+  widgetWindow.setMinimumSize(
+    Math.min(widgetSize.minWidth, area.width),
+    Math.min(widgetSize.minHeight, area.height),
+  );
+  widgetWindow.setBounds(clamped);
+}
+function showWidget(): void {
+  updateWidgetPreferences({ visible: true });
+  positionWidget();
+  widgetWindow.setAlwaysOnTop(widgetPreferences.pinned);
+  if (widgetReady && !locked) widgetWindow.showInactive();
+  widgetWindow.webContents.send("kb:changed");
+}
+function hideWidget(): void {
+  updateWidgetPreferences({ visible: false, bounds: widgetWindow.getBounds() });
+  widgetWindow.hide();
+}
+function saveWidgetBounds(): void {
+  if (widgetSaveTimer) clearTimeout(widgetSaveTimer);
+  widgetSaveTimer = undefined;
+  if (!widgetWindow || widgetWindow.isDestroyed()) return;
+  const bounds = widgetWindow.getBounds();
+  try {
+    updateWidgetPreferences({ bounds });
+  } catch (e) {
+    // Keep the current position in this session even if a backup temporarily blocks writes.
+    widgetPreferences = { ...widgetPreferences, bounds };
+    console.error("Save widget position:", e);
+  }
 }
 function visibleReminders(): Run[] {
   const shown = new Set(
@@ -74,6 +126,8 @@ async function tick(): Promise<void> {
   try {
     const generated = store.ensureToday();
     if (generated) broadcast();
+    else if (widgetWindow?.isVisible())
+      widgetWindow.webContents.send("kb:changed");
     if (locked || powerMonitor.getSystemIdleState(1) === "locked") return;
     const due = store.dueReminders();
     const remaining = visibleReminders();
@@ -119,23 +173,54 @@ function confirmDiscard(w: BrowserWindow): boolean {
   }
   return false;
 }
-function createWindow(kind: "main" | "quick" | "reminder"): BrowserWindow {
+function createWindow(
+  kind: "main" | "quick" | "reminder" | "widget",
+): BrowserWindow {
   const w = new BrowserWindow({
-    width: kind === "main" ? 1200 : kind === "quick" ? 600 : 420,
-    height: kind === "main" ? 800 : kind === "quick" ? 300 : 360,
-    minWidth: kind === "main" ? 850 : 320,
-    minHeight: kind === "main" ? 600 : 220,
+    width:
+      kind === "main"
+        ? 1200
+        : kind === "quick"
+          ? 600
+          : kind === "widget"
+            ? widgetSize.width
+            : 420,
+    height:
+      kind === "main"
+        ? 800
+        : kind === "quick"
+          ? 300
+          : kind === "widget"
+            ? widgetSize.height
+            : 360,
+    minWidth:
+      kind === "main" ? 850 : kind === "widget" ? widgetSize.minWidth : 320,
+    minHeight:
+      kind === "main" ? 600 : kind === "widget" ? widgetSize.minHeight : 220,
+    ...(kind === "widget"
+      ? {
+          maxWidth: widgetSize.maxWidth,
+          maxHeight: widgetSize.maxHeight,
+          frame: false,
+          maximizable: false,
+          minimizable: false,
+          fullscreenable: false,
+        }
+      : {}),
     show: false,
     title:
       kind === "main"
         ? "本地工作看板"
         : kind === "quick"
           ? "随手记"
-          : "到点提醒",
+          : kind === "widget"
+            ? "桌面便签"
+            : "到点提醒",
     autoHideMenuBar: true,
-    skipTaskbar: kind === "reminder",
-    alwaysOnTop: kind === "reminder",
-    backgroundColor: "#f5f6fa",
+    skipTaskbar: kind === "reminder" || kind === "widget",
+    alwaysOnTop:
+      kind === "reminder" || (kind === "widget" && widgetPreferences.pinned),
+    backgroundColor: kind === "widget" ? "#faf9f3" : "#f5f6fa",
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: true,
@@ -149,6 +234,16 @@ function createWindow(kind: "main" | "quick" | "reminder"): BrowserWindow {
   w.on("close", (e) => {
     if (quitting) return;
     e.preventDefault();
+    if (kind === "widget") {
+      try {
+        hideWidget();
+      } catch (error) {
+        widgetPreferences.visible = false;
+        console.error("Hide widget:", error);
+        w.hide();
+      }
+      return;
+    }
     const hadDraft = dirty.get(w.webContents.id);
     if (!confirmDiscard(w)) return;
     if (hadDraft) w.webContents.reload();
@@ -190,6 +285,18 @@ function shortcut(value: string): boolean {
 function registerHandlers(): void {
   const handlers: Record<string, (...args: any[]) => any> = {
     snapshot: () => store.snapshot(),
+    "widget.get": () => store.widgetSnapshot(),
+    "widget.show": () => showWidget(),
+    "widget.hide": () => hideWidget(),
+    "widget.setPinned": (pinned) => {
+      updateWidgetPreferences({ pinned: z.boolean().parse(pinned) });
+      widgetWindow.setAlwaysOnTop(widgetPreferences.pinned);
+      widgetWindow.webContents.send("kb:changed");
+    },
+    "widget.openMain": (runId) => {
+      if (runId !== undefined) store.getRun(id.parse(runId));
+      showMain(runId);
+    },
     "items.save": (c, n) =>
       store.saveItem(c, n === undefined ? undefined : id.parse(n)),
     "items.mode": (i, p, a) =>
@@ -339,6 +446,13 @@ function registerHandlers(): void {
     },
     "backup.restore": async (token) => {
       await store.restoreBackup(id.parse(token));
+      if (widgetSaveTimer) clearTimeout(widgetSaveTimer);
+      widgetSaveTimer = undefined;
+      widgetPreferences = store.widgetPreferences();
+      positionWidget();
+      widgetWindow.setAlwaysOnTop(widgetPreferences.pinned);
+      if (widgetPreferences.visible && !locked) widgetWindow.showInactive();
+      else widgetWindow.hide();
       activeReminders.clear();
       reminderWindow.hide();
       globalShortcut.unregisterAll();
@@ -385,6 +499,11 @@ function registerHandlers(): void {
   };
   const readOnly = new Set([
     "snapshot",
+    "widget.get",
+    "widget.show",
+    "widget.hide",
+    "widget.setPinned",
+    "widget.openMain",
     "reminders.list",
     "imports.preview",
     "imports.read",
@@ -401,10 +520,11 @@ function registerHandlers(): void {
   ]);
   for (const [channel, fn] of Object.entries(handlers))
     ipcMain.handle(`kb:${channel}`, async (event, ...args) => {
+      const previousRevision = store.revision();
       try {
         const win = BrowserWindow.fromWebContents(event.sender);
         if (
-          ![main, quick, reminderWindow].includes(win!) ||
+          ![main, quick, reminderWindow, widgetWindow].includes(win!) ||
           event.senderFrame !== event.sender.mainFrame
         )
           throw new Error("不允许的调用来源");
@@ -412,13 +532,32 @@ function registerHandlers(): void {
           throw new Error("快速记录窗口无此权限");
         if (win === reminderWindow && !channel.startsWith("reminders."))
           throw new Error("提醒窗口无此权限");
+        if (win === widgetWindow) {
+          if (
+            ![
+              "widget.get",
+              "widget.setPinned",
+              "widget.hide",
+              "widget.openMain",
+              "items.check",
+            ].includes(channel)
+          )
+            throw new Error("便签窗口无此权限");
+          if (
+            channel === "items.check" &&
+            !store.widgetSnapshot().checklists.some((run) => run.id === args[0])
+          )
+            throw new Error("便签只能勾选今天的检查清单");
+        }
         const value = await fn(...args);
-        if (!readOnly.has(channel)) {
+        // A read may generate today's runs at midnight before the scheduler gets its turn.
+        if (!readOnly.has(channel) || previousRevision !== store.revision()) {
           broadcast();
           await tick();
         }
         return { ok: true, value };
       } catch (e) {
+        if (previousRevision !== store.revision()) broadcast();
         return {
           ok: false,
           error:
@@ -434,11 +573,22 @@ function registerHandlers(): void {
     });
   ipcMain.handle("kb:window.close", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
+    if (
+      ![main, quick, reminderWindow, widgetWindow].includes(win!) ||
+      event.senderFrame !== event.sender.mainFrame
+    )
+      return { ok: false, error: "不允许的调用来源" };
     win?.close();
     return { ok: true };
   });
   ipcMain.on("kb:dirty", (event, value) => {
-    if (typeof value === "boolean") dirty.set(event.sender.id, value);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (
+      [main, quick].includes(win!) &&
+      event.senderFrame === event.sender.mainFrame &&
+      typeof value === "boolean"
+    )
+      dirty.set(event.sender.id, value);
   });
 }
 
@@ -448,6 +598,7 @@ if (lock)
     .then(async () => {
       store = new Store(join(dataDir, "kanban.db"));
       await store.prepareVersion(app.getVersion());
+      widgetPreferences = store.widgetPreferences();
       session.defaultSession.setPermissionRequestHandler(
         (_web, _permission, callback) => callback(false),
       );
@@ -455,6 +606,26 @@ if (lock)
       main = createWindow("main");
       quick = createWindow("quick");
       reminderWindow = createWindow("reminder");
+      widgetWindow = createWindow("widget");
+      positionWidget();
+      const scheduleWidgetSave = () => {
+        if (quitting) return;
+        if (widgetSaveTimer) clearTimeout(widgetSaveTimer);
+        widgetSaveTimer = setTimeout(saveWidgetBounds, 250);
+      };
+      widgetWindow.on("move", scheduleWidgetSave);
+      widgetWindow.on("resize", scheduleWidgetSave);
+      widgetWindow.once("ready-to-show", () => {
+        widgetReady = true;
+        if (widgetPreferences.visible && !locked) widgetWindow.showInactive();
+      });
+      const recoverWidgetPosition = () => {
+        widgetPreferences.bounds = widgetWindow.getBounds();
+        positionWidget();
+        saveWidgetBounds();
+      };
+      screen.on("display-removed", recoverWidgetPosition);
+      screen.on("display-metrics-changed", recoverWidgetPosition);
       const bitmap = Buffer.alloc(32 * 32 * 4);
       for (let y = 3; y < 29; y++)
         for (let x = 3; x < 29; x++) {
@@ -472,11 +643,25 @@ if (lock)
       main.setIcon(icon);
       quick.setIcon(icon);
       reminderWindow.setIcon(icon);
+      widgetWindow.setIcon(icon);
       tray = new Tray(icon);
       tray.setToolTip("本地工作看板");
       tray.setContextMenu(
         Menu.buildFromTemplate([
           { label: "打开看板", click: () => showMain() },
+          {
+            label: "显示 / 隐藏桌面便签",
+            click: () => {
+              try {
+                widgetPreferences.visible ? hideWidget() : showWidget();
+              } catch (error) {
+                void dialog.showMessageBox(main, {
+                  type: "error",
+                  message: String(error),
+                });
+              }
+            },
+          },
           {
             label: "随手记",
             click: () => {
@@ -505,13 +690,18 @@ if (lock)
       powerMonitor.on("lock-screen", () => {
         locked = true;
         reminderWindow.hide();
+        widgetWindow.hide();
       });
       powerMonitor.on("unlock-screen", () => {
         locked = false;
         if (activeReminders.size) reminderWindow.showInactive();
+        if (widgetPreferences.visible) widgetWindow.showInactive();
         void tick();
       });
-      powerMonitor.on("resume", () => void tick());
+      powerMonitor.on("resume", () => {
+        recoverWidgetPosition();
+        void tick();
+      });
     })
     .catch((e) => {
       dialog.showErrorBox("工作看板启动失败", String(e));
@@ -527,10 +717,12 @@ app.on("before-quit", (e) => {
     e.preventDefault();
     return;
   }
+  saveWidgetBounds();
   quitting = true;
 });
 app.on("will-quit", () => {
   if (timer) clearInterval(timer);
+  if (widgetSaveTimer) clearTimeout(widgetSaveTimer);
   globalShortcut.unregisterAll();
   store?.close();
 });

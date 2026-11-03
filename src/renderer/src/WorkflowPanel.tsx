@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 import type { Project } from "../../shared/contracts";
 import {
   workflowSchema,
@@ -42,6 +42,70 @@ const priorities = { high: "优先", normal: "普通", low: "稍后" };
 const uuid = () => crypto.randomUUID();
 const errorText = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
+
+function WorkbenchDisclosure({
+  projectId,
+  summary,
+  dirty,
+  children,
+}: {
+  projectId: string;
+  summary: string;
+  dirty: boolean;
+  children: React.ReactNode;
+}) {
+  const storageKey = `kanban:workbench:${projectId}:expanded`;
+  const contentId = useId();
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(storageKey) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    const next = !expanded;
+    setExpanded(next);
+    try {
+      localStorage.setItem(storageKey, String(next));
+    } catch {
+      // A local display preference must not block editing if storage is unavailable.
+    }
+  };
+  return (
+    <section className="workflow-panel" aria-label="项目开发流程">
+      <button
+        className="wf-collapse-toggle"
+        aria-label={expanded ? "收起开发工作台" : "展开开发工作台"}
+        aria-expanded={expanded}
+        aria-controls={contentId}
+        onClick={toggle}
+      >
+        <span className="wf-disclosure-chevron" aria-hidden="true">
+          ›
+        </span>
+        <span className="wf-disclosure-label">
+          <strong>开发工作台</strong>
+          <small>{summary}</small>
+        </span>
+        {dirty && <span className="wf-disclosure-dirty">有未保存的修改</span>}
+        <span className="wf-disclosure-action">
+          {expanded ? "收起" : "展开"}
+        </span>
+      </button>
+      <div
+        id={contentId}
+        className={`wf-collapse-body${expanded ? " is-open" : ""}`}
+        inert={!expanded}
+        aria-hidden={!expanded}
+      >
+        <div className="wf-collapse-content">
+          <div className="wf-content">{children}</div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function Field({
   label,
@@ -343,10 +407,17 @@ export function WorkflowPanel({
   );
 
   return (
-    <section className="workflow-panel" aria-label="项目开发流程">
+    <WorkbenchDisclosure
+      projectId={project.id}
+      summary={
+        enabled
+          ? `${activeMode?.label} · ${workflow.milestones.filter((m) => m.state === "completed").length}/${workflow.milestones.length} 个里程碑已验收`
+          : "按需展开，选择开发路线与协作方式"
+      }
+      dirty={dirty}
+    >
       <div className="wf-heading">
         <div>
-          <span className="wf-kicker">开发工作台</span>
           <h2>{enabled ? activeMode?.label : "选一条路线，从第一步开始"}</h2>
           <p className="wf-subtitle">
             {enabled
@@ -490,7 +561,7 @@ export function WorkflowPanel({
             </div>
 
             {tab === "route" && (
-              <div>
+              <div className="wf-tab-content">
                 <div className="wf-focus">
                   <span className="wf-kicker">下一步</span>
                   {!workflow.goal.trim() ? (
@@ -842,7 +913,7 @@ export function WorkflowPanel({
             )}
 
             {tab === "tasks" && (
-              <>
+              <div className="wf-tab-content">
                 <div className="wf-section-heading">
                   <div>
                     <h3>把目标变成可以开始的行动</h3>
@@ -974,11 +1045,11 @@ export function WorkflowPanel({
                     </div>
                   </div>
                 )}
-              </>
+              </div>
             )}
 
             {tab === "collaboration" && (
-              <>
+              <div className="wf-tab-content">
                 <p className="wf-local-note">
                   协作信息保存在本机。接收、确认和验收状态由你依据实际沟通登记，不会自动通知对方。
                 </p>
@@ -1316,11 +1387,11 @@ export function WorkflowPanel({
                     </div>
                   </div>
                 )}
-              </>
+              </div>
             )}
 
             {tab === "agent" && (
-              <>
+              <div className="wf-tab-content">
                 <div className="wf-focus">
                   <h3>把上下文交给 Agent，再把结果带回来</h3>
                   <p>
@@ -1467,7 +1538,7 @@ export function WorkflowPanel({
                     </button>
                   </div>
                 )}
-              </>
+              </div>
             )}
             {dirty && (
               <div className="wf-savebar">
@@ -1500,7 +1571,7 @@ export function WorkflowPanel({
           </div>
         )}
       </fieldset>
-    </section>
+    </WorkbenchDisclosure>
   );
 }
 

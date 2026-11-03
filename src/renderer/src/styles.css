@@ -7,6 +7,9 @@
   --blue: #3869df;
   --muted: #7b8495;
   --border: #e4e8f0;
+  --motion-fast: 120ms;
+  --motion-normal: 180ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 .development-today {
   margin: 24px 0;
@@ -58,8 +61,10 @@ button {
   color: #3c495f;
   padding: 8px 13px;
   transition:
-    background 0.15s,
-    border-color 0.15s;
+    background-color var(--motion-fast) var(--motion-ease),
+    border-color var(--motion-fast) var(--motion-ease),
+    color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 button:hover {
   background: #f2f5fc;
@@ -83,6 +88,9 @@ select {
   color: #27334b;
   padding: 9px 11px;
   max-width: 100%;
+  transition:
+    border-color var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
 }
 input:focus,
 textarea:focus,
@@ -415,6 +423,24 @@ hr {
   margin: 0 auto;
   padding: 32px 34px 50px;
 }
+.page,
+.motion-surface {
+  animation: surface-enter var(--motion-normal) var(--motion-ease);
+}
+@keyframes surface-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fade-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 .page-heading {
   display: flex;
   align-items: center;
@@ -698,6 +724,7 @@ hr {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  animation: fade-enter var(--motion-fast) var(--motion-ease);
 }
 .dialog {
   width: 620px;
@@ -709,6 +736,7 @@ hr {
   border-radius: 12px;
   box-shadow: 0 25px 90px #14264440;
   overflow: hidden;
+  animation: surface-enter var(--motion-normal) var(--motion-ease);
 }
 .dialog.wide {
   width: 850px;
@@ -761,6 +789,7 @@ hr {
   border-radius: 9px;
   box-shadow: 0 5px 20px #20463625;
   font-size: 13px;
+  animation: fade-enter var(--motion-fast) var(--motion-ease);
 }
 .weekdays {
   display: flex;
@@ -972,6 +1001,7 @@ hr {
   display: block;
   height: 100%;
   background: #6b94ec;
+  transition: width var(--motion-normal) var(--motion-ease);
 }
 .project-detail {
   display: flex;
@@ -1264,5 +1294,18 @@ hr {
   }
   .page-heading .row-actions {
     max-width: 180px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-normal: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
 }

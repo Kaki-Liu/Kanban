@@ -23,6 +23,8 @@ const panel = () => page.locator(".workflow-panel");
 async function openProjects() {
   await page.locator("nav").getByRole("button", { name: "项目" }).click();
   await expect(panel()).toBeVisible();
+  const expand = panel().getByRole("button", { name: "展开开发工作台", exact: true });
+  if (await expand.isVisible()) await expand.click();
 }
 async function saveFlow() {
   await panel()
@@ -307,4 +309,57 @@ test("切换归档筛选后仍保护草稿，离开和编辑项目均有边界",
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(panel().getByLabel("项目目标")).toHaveValue("需要保留的未保存目标");
   expect((await snapshot()).projects[0].workflow?.goal).toBe("保存前的目标");
+});
+
+test("开发工作台默认折叠、按项目记忆，折叠保留草稿并支持减少动态效果", async () => {
+  const workflow = createWorkflow("kanban");
+  workflow.goal = "原始目标";
+  await page.evaluate(async ({ id, workflow }) => {
+    const api = (window as unknown as { kanban: DesktopAPI }).kanban;
+    await api.projects.saveWorkflow(id, workflow, (await api.snapshot()).revision);
+    await api.projects.save({ id: "second-project", name: "第二个项目", workflow });
+  }, { id: projectId, workflow });
+  await page.locator("nav").getByRole("button", { name: "项目" }).click();
+  await page.locator(".project-selector").getByRole("button", { name: /开发协作验收项目/ }).click();
+  const toggle = () => panel().locator(".wf-collapse-toggle");
+  await expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  await expect(panel().getByRole("button", { name: "开发任务", exact: true })).not.toBeVisible();
+  mkdirSync("test-results", { recursive: true });
+  await page.screenshot({ path: "test-results/workbench-collapsed.png" });
+  await toggle().click();
+  await panel().getByText("目标、范围与流程设置", { exact: true }).click();
+  await panel().getByLabel("项目目标").fill("折叠时也要保留的草稿");
+  await toggle().click();
+  await expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  await expect(panel().getByLabel("项目目标")).not.toBeVisible();
+  expect((await snapshot()).projects.find((p) => p.id === projectId)?.workflow?.goal).toBe("原始目标");
+  await toggle().click();
+  await expect(panel().getByLabel("项目目标")).toHaveValue("折叠时也要保留的草稿");
+  await saveFlow();
+
+  await page.locator(".project-selector").getByRole("button", { name: /第二个项目/ }).click();
+  await expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  await page.locator(".project-selector").getByRole("button", { name: /开发协作验收项目/ }).click();
+  await expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const durations = await panel().locator(".wf-collapse-body").evaluate((el) =>
+    getComputedStyle(el).transitionDuration.split(",").map((value) => parseFloat(value)),
+  );
+  expect(durations.every((duration) => duration <= 0.001)).toBe(true);
+
+  // A real application restart checks persistence beyond the component lifetime.
+  await app.close();
+  app = await electron.launch({
+    executablePath: process.env.KANBAN_TEST_EXE || (require("electron") as string),
+    args: process.env.KANBAN_TEST_EXE ? [] : ["."],
+    env: { ...process.env, KANBAN_DATA_DIR: dataDir, KANBAN_E2E: "1" },
+  });
+  await expect.poll(() => app.windows().some((w) => w.url().includes("window=main"))).toBe(true);
+  page = app.windows().find((w) => w.url().includes("window=main"))!;
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.locator("nav").getByRole("button", { name: "项目" }).click();
+  await page.locator(".project-selector").getByRole("button", { name: /开发协作验收项目/ }).click();
+  await expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  await page.locator(".project-selector").getByRole("button", { name: /第二个项目/ }).click();
+  await expect(toggle()).toHaveAttribute("aria-expanded", "false");
 });

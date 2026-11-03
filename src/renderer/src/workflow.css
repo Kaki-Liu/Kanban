@@ -1,9 +1,81 @@
 .workflow-panel {
   margin: 20px 0 30px;
-  padding: 24px;
+  padding: 16px 20px;
   border: 1px solid #dce4f3;
   border-radius: 14px;
   background: #fff;
+}
+.wf-collapse-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 4px;
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+.wf-collapse-toggle:hover {
+  border-color: transparent;
+  background: #f7f9fd;
+}
+.wf-disclosure-chevron {
+  color: #7390c2;
+  font-size: 24px;
+  line-height: 1;
+  transition: transform var(--motion-normal) var(--motion-ease);
+}
+.wf-collapse-toggle[aria-expanded="true"] .wf-disclosure-chevron {
+  transform: rotate(90deg);
+}
+.wf-disclosure-label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.wf-disclosure-label strong {
+  color: #31466a;
+  font-size: 14px;
+}
+.wf-disclosure-label small {
+  color: #8491a6;
+  font-size: 11px;
+  font-weight: 400;
+}
+.wf-disclosure-action {
+  margin-left: auto;
+  color: #627ca9;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.wf-disclosure-dirty {
+  color: #9a762e;
+  font-size: 11px;
+}
+.wf-collapse-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--motion-normal) var(--motion-ease),
+    opacity var(--motion-fast) var(--motion-ease),
+    visibility var(--motion-normal);
+}
+.wf-collapse-body.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+}
+.wf-collapse-content {
+  min-height: 0;
+  overflow: hidden;
+}
+.wf-content {
+  padding: 18px 4px 4px;
+}
+.wf-tab-content {
+  animation: surface-enter var(--motion-normal) var(--motion-ease);
 }
 .wf-heading,
 .wf-section-heading,

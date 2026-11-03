@@ -6,6 +6,12 @@ import { z } from "zod";
 import { workflowSchema, type Workflow } from "../shared/workflow";
 import { mergeWorkflowImport } from "../shared/workflow-templates";
 import {
+  widgetContent,
+  widgetPreferencesSchema,
+  type WidgetPreferences,
+  type WidgetSnapshot,
+} from "../shared/widget";
+import {
   parseProjectConfig,
   projectConfigText,
   newProjectConfig,
@@ -189,6 +195,34 @@ export class Store {
         ).value,
       ),
     );
+  }
+  widgetPreferences(): WidgetPreferences {
+    const row = this.db
+      .prepare("SELECT value FROM meta WHERE key='widget_preferences'")
+      .get() as Row | undefined;
+    return widgetPreferencesSchema.parse(row ? JSON.parse(row.value) : {});
+  }
+  saveWidgetPreferences(value: WidgetPreferences): void {
+    if (this.busy) throw new Error("正在备份或恢复，请稍后重试。");
+    const parsed = widgetPreferencesSchema.parse(value);
+    // Window layout is not a business edit: do not invalidate project/import previews.
+    this.db
+      .prepare(
+        "INSERT INTO meta(key,value) VALUES('widget_preferences',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      )
+      .run(JSON.stringify(parsed));
+  }
+  widgetSnapshot(): WidgetSnapshot {
+    this.ensureToday();
+    return {
+      ...widgetContent(
+        this.templates(),
+        this.runs(),
+        this.reminders(),
+        this.clock(),
+      ),
+      pinned: this.widgetPreferences().pinned,
+    };
   }
   private transaction<T>(fn: () => T): T {
     if (this.busy) throw new Error("正在备份或恢复，请稍后重试。");
@@ -1106,6 +1140,8 @@ export class Store {
       const settings = data.meta.find((r) => r.key === "settings");
       if (!settings) throw new Error("备份缺少设置");
       settingsSchema.parse(JSON.parse(settings.value));
+      const widget = data.meta.find((r) => r.key === "widget_preferences");
+      if (widget) widgetPreferencesSchema.parse(JSON.parse(widget.value));
       if (!data.meta.some((r) => r.key === "revision" && /^\d+$/.test(r.value)))
         throw new Error("备份缺少数据版本");
       return {

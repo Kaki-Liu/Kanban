@@ -17,6 +17,8 @@ import type {
 import { today } from "../../shared/time";
 import { WorkflowPanel } from "./WorkflowPanel";
 import { ProjectConfigForm } from "./ProjectConfigForm";
+import { StickyWidget } from "./StickyWidget";
+import { CalendarPage } from "./CalendarPage";
 import {
   createWorkflow,
   nextActions,
@@ -197,11 +199,11 @@ function Dialog({
   );
 }
 type Modal =
-  | { type: "item"; config?: ItemConfig; noteId?: string }
+  | { type: "item"; config?: ItemConfig; noteId?: string; initialDate?: string }
   | { type: "run"; id: string }
   | { type: "project"; project?: Project }
   | { type: "project-config"; project?: Project }
-  | { type: "log"; log?: WorkLog }
+  | { type: "log"; log?: WorkLog; initialDate?: string }
   | { type: "note"; note?: Note }
   | { type: "templates" | "import" | "report" | "settings" };
 type Actions = {
@@ -213,7 +215,9 @@ type Actions = {
 
 function App() {
   const { data, error, load } = useSnapshot();
-  const [view, setView] = useState<"today" | "projects" | "records">("today"),
+  const [view, setView] = useState<
+      "today" | "projects" | "records" | "calendar"
+    >("today"),
     [modal, setModal] = useState<Modal | null>(null);
   const [dirty, setDirty] = useState(false),
     [quickText, setQuickText] = useState(""),
@@ -352,7 +356,11 @@ function App() {
           ].map(([key, icon, label]) => (
             <button
               key={key}
-              className={view === key ? "selected" : ""}
+              className={
+                view === key || (view === "calendar" && key === "today")
+                  ? "selected"
+                  : ""
+              }
               onClick={() => {
                 if (
                   key !== view &&
@@ -371,6 +379,9 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <button onClick={() => void perform(() => api.widget.show())}>
+            ▤ 桌面便签
+          </button>
           <button onClick={() => open({ type: "import" })}>
             ↧ Agent 配置导入
           </button>
@@ -386,11 +397,13 @@ function App() {
       <main className="main-content">
         <header className="topbar">
           <span>
-            {view === "today"
-              ? "我的工作台"
-              : view === "projects"
-                ? "项目空间"
-                : "个人记录"}
+            {view === "calendar"
+              ? "我的工作台 / 日历回顾"
+              : view === "today"
+                ? "我的工作台"
+                : view === "projects"
+                  ? "项目空间"
+                  : "个人记录"}
           </span>
           <div>
             <span className="muted">{data.today}</span>
@@ -438,12 +451,15 @@ function App() {
                 <h1>今天，把事情一件件做好</h1>
                 <p className="muted">待办有提醒，做过的工作有记录。</p>
               </div>
-              <button
-                className="primary"
-                onClick={() => open({ type: "item" })}
-              >
-                ＋ 新建事项
-              </button>
+              <div className="row-actions">
+                <button onClick={() => setView("calendar")}>日历回顾</button>
+                <button
+                  className="primary"
+                  onClick={() => open({ type: "item" })}
+                >
+                  ＋ 新建事项
+                </button>
+              </div>
             </div>
             <section className="quick-capture">
               <div className="capture-title">
@@ -684,6 +700,17 @@ function App() {
           />
         )}
         {view === "records" && <Records data={data} open={open} />}
+        {view === "calendar" && (
+          <CalendarPage
+            data={data}
+            onBack={() => setView("today")}
+            onOpenRun={(id) => open({ type: "run", id })}
+            onEditTemplate={(config) => open({ type: "item", config })}
+            onEditLog={(log) => open({ type: "log", log })}
+            onNewItem={(initialDate) => open({ type: "item", initialDate })}
+            onNewLog={(initialDate) => open({ type: "log", initialDate })}
+          />
+        )}
       </main>
       {toast && (
         <div className="toast" role="status">
@@ -734,6 +761,7 @@ function App() {
               {...actions}
               config={modal.config}
               noteId={modal.noteId}
+              initialDate={modal.initialDate}
             />
           )}
           {modal.type === "run" && (
@@ -762,7 +790,13 @@ function App() {
               }}
             />
           )}
-          {modal.type === "log" && <LogForm {...actions} log={modal.log} />}
+          {modal.type === "log" && (
+            <LogForm
+              {...actions}
+              log={modal.log}
+              initialDate={modal.initialDate}
+            />
+          )}
           {modal.type === "note" && (
             <NoteForm {...actions} note={modal.note} open={open} />
           )}
@@ -780,9 +814,10 @@ function ItemForm({
   data,
   config,
   noteId,
+  initialDate,
   perform,
   finish,
-}: Actions & { config?: ItemConfig; noteId?: string }) {
+}: Actions & { config?: ItemConfig; noteId?: string; initialDate?: string }) {
   const note = data.notes.find((n) => n.id === noteId);
   const [title, setTitle] = useState(config?.title || note?.title || ""),
     [body, setBody] = useState(config?.content_markdown || "");
@@ -799,7 +834,7 @@ function ItemForm({
       ? config.schedule.frequency === "once"
         ? config.schedule.date
         : config.schedule.start_date
-      : data.today,
+      : initialDate || data.today,
   );
   const [time, setTime] = useState(config?.schedule.time || ""),
     [popup, setPopup] = useState(config?.reminder.popup || false);
@@ -1945,9 +1980,15 @@ function Records({ data, open }: { data: Snapshot; open: (m: Modal) => void }) {
   );
 }
 
-function LogForm({ data, log, perform, finish }: Actions & { log?: WorkLog }) {
+function LogForm({
+  data,
+  log,
+  initialDate,
+  perform,
+  finish,
+}: Actions & { log?: WorkLog; initialDate?: string }) {
   const [body, setBody] = useState(log?.body || ""),
-    [date, setDate] = useState(log?.date || data.today),
+    [date, setDate] = useState(log?.date || initialDate || data.today),
     [project, setProject] = useState(log?.projectId || null);
   return (
     <form
@@ -2703,6 +2744,8 @@ createRoot(document.getElementById("root")!).render(
     <QuickWindow />
   ) : kind === "reminder" ? (
     <ReminderWindow />
+  ) : kind === "widget" ? (
+    <StickyWidget />
   ) : (
     <App />
   ),
