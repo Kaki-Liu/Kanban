@@ -1,10 +1,12 @@
 # 本地工作看板
 
-Windows 上离线使用的每日事项、项目进度和工作记录工具。业务数据仅保存在当前电脑，不需要账户、服务器或模型 API Key。
+Windows 上离线使用的每日事项、项目进度和工作记录工具。业务数据仅保存在当前电脑，不需要账户、服务器或模型 API Key。v0.4.0 使用 Rust / Tauri 桌面程序，保留原有 React 界面和业务功能，安装包不再携带 Electron 和完整 Chromium。
 
 ## 安装与使用
 
 安装包为 `dist/Kanban-<版本>-Setup.exe`，按当前 Windows 用户安装。首次运行进入“今天”页；默认空白，不会自动导入示例任务。
+
+面向 Windows 11 x64，需要 Microsoft Edge WebView2 Runtime。电脑已安装 WebView2 时，可离线安装并使用；缺少时，安装程序会联网下载安装运行时。最终用户不需要 Node.js、Rust、开发工具或本项目源码。安装包体积不包含系统共享的 WebView2，实际大小及验证范围见 [验收记录](docs/VERIFICATION.md)。
 
 - **今天**：新建一次性或重复事项、处理 checklist、查看逾期记录。关闭主窗口后程序驻留托盘，到点弹出提醒；通过托盘菜单退出后停止提醒。
 - **日历回顾**：从“今天”页进入二级页面，按月查看事项和工作记录。选择一天可查看或处理历史事项、修改记录、补记当天工作或新增安排；未来周期事项显示为计划预览，不提前创建执行记录。
@@ -65,7 +67,16 @@ JSON Schema 描述结构；应用还会校验真实日期、重复 id、项目�
 
 正式版数据库：`%APPDATA%\Kanban\kanban.db`。开发版：`%APPDATA%\Kanban-dev\kanban.db`。数据不存入安装目录。
 
-在设置中导出 `.kanban-backup` 文件。恢复为全量替换，程序会在应用数据目录的 `backups` 中自动保存恢复前备份。损坏或不兼容的文件会被拒绝，恢复失败事务回滚。覆盖安装和卸载默认保留个人数据。
+在设置中导出 `.kanban-backup` 文件。恢复为全量替换，程序会在应用数据目录的 `backups` 中自动保存恢复前备份。损坏或不兼容的文件会被拒绝，恢复失败事务回滚。安装目录与业务数据分开，卸载默认保留个人数据。
+
+从 Electron 版迁移到 v0.4.0，请依次操作：
+
+1. 在旧版设置中导出 `.kanban-backup` 备份。
+2. 从旧版托盘菜单选择“退出”；仅关闭主窗口仍会驻留后台。
+3. 在 Windows“已安装的应用”中卸载旧版。卸载默认保留个人数据，不要手动删除 `%APPDATA%\Kanban`。
+4. 安装并启动新版，新版会自动读取同一路径的数据库，无需重新填写项目或导入所有事项。
+
+两种安装器的安装登记不同，直接安装新版可能留下重复卸载条目和旧程序；新版安装器不会自动卸载 Electron 版。已验证旧数据读取与两版备份互相恢复，跨框架卸载及安装的完整过程尚未实机验收。后续 Rust 版计划通过同一 NSIS 安装器覆盖升级并保留数据，版本间覆盖升级仍需随实际版本验证。此版本不提供自动更新，详细边界见 [迁移说明](docs/RUST_MIGRATION.md)。
 
 首次用新版本打开已有数据时，会先自动保存升级前数据库快照，再进入界面；失败则停止启动。同版本启动不重复备份。v0.1.0 不支持新版开发流程数据，降级请使用升级前备份，勿直接用旧版编辑新版数据。
 
@@ -73,7 +84,7 @@ JSON Schema 描述结构；应用还会校验真实日期、重复 id、项目�
 
 ## 开发
 
-环境：Node.js 22.12+，npm，Windows x64。Electron 携带自己的运行时，最终用户无需安装 Node.js。
+开发环境：Node.js 22.12+、npm、Rust stable 和 Windows x64。Windows 标准构建使用 Rust MSVC 工具链，需安装 Visual Studio C++ Build Tools 与 Windows SDK；开发运行同样需要 WebView2。以上编译工具仅供开发者使用。
 
 ```powershell
 npm ci
@@ -83,21 +94,29 @@ npm run dev
 ```powershell
 npm run typecheck
 npm test
-npm run test:e2e
+npm run test:rust
 npm run schema
 npm run schema:workflow
 npm run schema:project
+npm run schema:rust
+npm run build:web
+npm run test:harness
+npm run test:compat
+npm run pack
+npm run test:e2e
 npm run dist
 ```
 
-`npm run pack` 生成可直接运行的 `dist/win-unpacked/Kanban.exe`；`npm run dist` 生成 NSIS 安装包。首次构建需要下载 Electron 和打包工具；安装后的核心功能离线运行。
+`npm run dev` 启动 Tauri 开发版；`npm run build:web` 只构建前端。`npm run pack` 构建本机可执行程序，`npm run dist` 构建当前用户 NSIS 安装包，均自动构建前端。默认产物在 `src-tauri/target/release/`，安装包在其 `bundle/nsis/` 下；指定 Rust target 时，路径中增加对应 target 目录。发包时将 NSIS 产物复制为 `dist/Kanban-<版本>-Setup.exe`。直接分发可执行程序时还需保留同目录的 `WebView2Loader.dll`，部门使用建议发安装包。
 
-主要分层：`src/main` 负责存储、业务和桌面集成；`src/preload` 暴露受限接口；`src/renderer` 为 React 界面；`src/shared` 为类型与校验契约。不启动本地 HTTP 服务。
+本次发布实际使用 `x86_64-pc-windows-gnu` 工具链构建；标准 MSVC 路径未在本轮验证。选择 GNU 时，需另装可用的 x64 GCC 工具链并将 `gcc` 放入 PATH；项目的 `.cargo/config.toml` 仅为该 target 指定 GCC，不改变默认 Rust target。可执行 `rustup target add x86_64-pc-windows-gnu` 后，使用 `npm run dist -- --target x86_64-pc-windows-gnu` 打包。首次构建会下载 Rust crates 和 Tauri 打包工具。
 
-测试自动创建独立临时数据目录，不读写真实个人数据库。可通过 `KANBAN_TEST_EXE` 指定打包后的程序执行相同界面测试。单元测试使用可注入时钟验证日历和提醒，不需要改变系统时间。
+主要分层：`src-tauri/src` 负责 Rust 存储、业务、提醒调度和 Windows 集成；`src/renderer` 保留 React 界面，通过受限的桌面接口调用原生功能；`src/shared` 保存类型与校验契约。`npm run schema:rust` 从这些契约生成 Rust 使用的 JSON Schema，`build:web` 也会自动生成，直接用 Cargo 构建前需确保已同步。正式版使用内嵌前端资源，不启动本地 HTTP 服务。原 `src/main`、`src/preload` 及 Electron 开发依赖保留用于行为对照和迁移回归，不进入 Tauri 安装包；旧版入口为 `dev:electron`、`build:electron` 和 `test:electron-baseline`。
+
+测试自动创建独立临时数据目录，不读写真实个人数据库。`npm test` 保留原有业务与界面逻辑基线；`test:rust` 验证 Rust 业务规则，`test:compat` 对照两版数据行为和备份格式，`test:e2e` 操作 WebView2 窗口。兼容测试前用 `test:harness` 构建专用的 `store-probe`，它不进入正式安装包；界面测试前运行 `pack` 构建桌面程序。测试会查找默认、GNU 或 MSVC 的构建目录，也可分别用 `KANBAN_STORE_PROBE`、`KANBAN_RUST_EXE` 指定对应程序。单元与兼容测试使用可注入时钟，不需要改变系统时间。实际执行结果及尚未覆盖的安装、休眠等边界统一记录在 [验收记录](docs/VERIFICATION.md)。
 
 需求见 [PRD](docs/PRD.md)，实施与验证进度见 [实施计划](docs/IMPLEMENTATION_PLAN.md)。
 
 ## 版本管理
 
-源码使用本地 Git 管理，版本以 `v0.2.0`、`v0.2.1` 等标签标识。没有配置或推送远程仓库。版本变化见 [更新记录](CHANGELOG.md)，测试结果及安装包校验值见 [验收记录](docs/VERIFICATION.md)。
+源码使用本地 Git 管理，当前版本为 `0.4.0`。没有配置或推送远程仓库。版本变化见 [更新记录](CHANGELOG.md)，测试结果及安装包校验值见 [验收记录](docs/VERIFICATION.md)。

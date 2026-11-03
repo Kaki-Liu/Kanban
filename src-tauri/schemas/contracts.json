@@ -1,0 +1,1842 @@
+{
+  "item": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "type": {
+        "type": "string",
+        "enum": [
+          "task",
+          "checklist"
+        ]
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "project_id": {
+        "default": null,
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "content_markdown": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "owner": {
+        "type": "string",
+        "maxLength": 200
+      },
+      "checklist": {
+        "default": [],
+        "maxItems": 100,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          "required": [
+            "id",
+            "text"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "schedule": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "frequency": {
+                "type": "string",
+                "const": "once"
+              },
+              "date": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "time": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "timezone": {
+                "default": "Asia/Shanghai",
+                "type": "string",
+                "const": "Asia/Shanghai"
+              }
+            },
+            "required": [
+              "frequency",
+              "date"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "frequency": {
+                "type": "string",
+                "enum": [
+                  "daily",
+                  "weekdays"
+                ]
+              },
+              "start_date": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "time": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "timezone": {
+                "default": "Asia/Shanghai",
+                "type": "string",
+                "const": "Asia/Shanghai"
+              }
+            },
+            "required": [
+              "frequency",
+              "start_date"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "frequency": {
+                "type": "string",
+                "const": "weekly"
+              },
+              "start_date": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "weekdays": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 7
+                }
+              },
+              "time": {
+                "type": "string",
+                "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+              },
+              "timezone": {
+                "default": "Asia/Shanghai",
+                "type": "string",
+                "const": "Asia/Shanghai"
+              }
+            },
+            "required": [
+              "frequency",
+              "start_date",
+              "weekdays"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "reminder": {
+        "default": {
+          "popup": false,
+          "snooze_minutes": 10
+        },
+        "type": "object",
+        "properties": {
+          "popup": {
+            "default": false,
+            "type": "boolean"
+          },
+          "snooze_minutes": {
+            "default": 10,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "id",
+      "type",
+      "title",
+      "schedule"
+    ],
+    "additionalProperties": false
+  },
+  "import": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "type": "number",
+        "const": 1
+      },
+      "items": {
+        "minItems": 1,
+        "maxItems": 500,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "task",
+                "checklist"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "project_id": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "content_markdown": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "owner": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "checklist": {
+              "default": [],
+              "maxItems": 100,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "id",
+                  "text"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "schedule": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "frequency": {
+                      "type": "string",
+                      "const": "once"
+                    },
+                    "date": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "time": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "timezone": {
+                      "default": "Asia/Shanghai",
+                      "type": "string",
+                      "const": "Asia/Shanghai"
+                    }
+                  },
+                  "required": [
+                    "frequency",
+                    "date"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "frequency": {
+                      "type": "string",
+                      "enum": [
+                        "daily",
+                        "weekdays"
+                      ]
+                    },
+                    "start_date": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "time": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "timezone": {
+                      "default": "Asia/Shanghai",
+                      "type": "string",
+                      "const": "Asia/Shanghai"
+                    }
+                  },
+                  "required": [
+                    "frequency",
+                    "start_date"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "frequency": {
+                      "type": "string",
+                      "const": "weekly"
+                    },
+                    "start_date": {
+                      "type": "string",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                    },
+                    "weekdays": {
+                      "minItems": 1,
+                      "maxItems": 7,
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 7
+                      }
+                    },
+                    "time": {
+                      "type": "string",
+                      "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                    },
+                    "timezone": {
+                      "default": "Asia/Shanghai",
+                      "type": "string",
+                      "const": "Asia/Shanghai"
+                    }
+                  },
+                  "required": [
+                    "frequency",
+                    "start_date",
+                    "weekdays"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "reminder": {
+              "default": {
+                "popup": false,
+                "snooze_minutes": 10
+              },
+              "type": "object",
+              "properties": {
+                "popup": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "snooze_minutes": {
+                  "default": 10,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1440
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "type",
+            "title",
+            "schedule"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "schema_version",
+      "items"
+    ],
+    "additionalProperties": false
+  },
+  "project": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "description": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "owner": {
+        "default": "",
+        "type": "string",
+        "maxLength": 200
+      },
+      "state": {
+        "default": "unstarted",
+        "type": "string",
+        "enum": [
+          "unstarted",
+          "active",
+          "paused",
+          "completed"
+        ]
+      },
+      "progress": {
+        "default": 0,
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      },
+      "update": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "archived": {
+        "default": false,
+        "type": "boolean"
+      },
+      "logUpdate": {
+        "default": false,
+        "type": "boolean"
+      },
+      "workflow": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "novice",
+              "prototype",
+              "agile",
+              "kanban",
+              "staged",
+              "shapeup"
+            ]
+          },
+          "collaboration": {
+            "default": "solo",
+            "type": "string",
+            "enum": [
+              "solo",
+              "team",
+              "cross"
+            ]
+          },
+          "guidance": {
+            "default": "detailed",
+            "type": "string",
+            "enum": [
+              "detailed",
+              "compact"
+            ]
+          },
+          "wipLimit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
+          },
+          "goal": {
+            "default": "",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "scope": {
+            "default": "",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "outOfScope": {
+            "default": "",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "acceptance": {
+            "default": "",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "participants": {
+            "default": [],
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "role": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "contact": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 500
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "milestones": {
+            "default": [],
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "goal": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "acceptance": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "state": {
+                  "default": "pending",
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "active",
+                    "completed"
+                  ]
+                },
+                "dueDate": {
+                  "default": "",
+                  "type": "string"
+                },
+                "evidence": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "tasks": {
+            "default": [],
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "milestoneId": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 200
+                },
+                "owner": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "contributors": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "reviewer": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "receiver": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "boundary": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "input": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "output": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "acceptance": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "dependsOn": {
+                  "default": [],
+                  "maxItems": 500,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "state": {
+                  "default": "todo",
+                  "type": "string",
+                  "enum": [
+                    "todo",
+                    "doing",
+                    "review",
+                    "done"
+                  ]
+                },
+                "hasStarted": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "priority": {
+                  "default": "normal",
+                  "type": "string",
+                  "enum": [
+                    "low",
+                    "normal",
+                    "high"
+                  ]
+                },
+                "blocker": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "followUpDate": {
+                  "default": "",
+                  "type": "string"
+                },
+                "evidence": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "handoff": {
+                  "default": {},
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "default": "draft",
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "submitted",
+                        "received",
+                        "accepted",
+                        "returned"
+                      ]
+                    },
+                    "artifacts": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "instructions": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "verification": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "risks": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "nextAction": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "note": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "decisions": {
+            "default": [],
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "kind": {
+                  "default": "decision",
+                  "type": "string",
+                  "enum": [
+                    "decision",
+                    "change",
+                    "interface"
+                  ]
+                },
+                "topic": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "people": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "conclusion": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "impact": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "date": {
+                  "default": "",
+                  "type": "string"
+                },
+                "followUpDate": {
+                  "default": "",
+                  "type": "string"
+                },
+                "status": {
+                  "default": "pending",
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "confirmed"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "topic"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "additionalProperties": false
+  },
+  "log": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "body": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100000
+      },
+      "date": {
+        "type": "string",
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+      },
+      "projectId": {
+        "default": null,
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "runId": {
+        "default": null,
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "body",
+      "date"
+    ],
+    "additionalProperties": false
+  },
+  "note": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "title": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "body": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "projectId": {
+        "default": null,
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "title"
+    ],
+    "additionalProperties": false
+  },
+  "settings": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "shortcut": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "autoStart": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "shortcut",
+      "autoStart"
+    ],
+    "additionalProperties": false
+  },
+  "workflow": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "mode": {
+        "type": "string",
+        "enum": [
+          "novice",
+          "prototype",
+          "agile",
+          "kanban",
+          "staged",
+          "shapeup"
+        ]
+      },
+      "collaboration": {
+        "default": "solo",
+        "type": "string",
+        "enum": [
+          "solo",
+          "team",
+          "cross"
+        ]
+      },
+      "guidance": {
+        "default": "detailed",
+        "type": "string",
+        "enum": [
+          "detailed",
+          "compact"
+        ]
+      },
+      "wipLimit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20
+      },
+      "goal": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "scope": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "outOfScope": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "acceptance": {
+        "default": "",
+        "type": "string",
+        "maxLength": 100000
+      },
+      "participants": {
+        "default": [],
+        "maxItems": 100,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "role": {
+              "default": "",
+              "type": "string",
+              "maxLength": 500
+            },
+            "contact": {
+              "default": "",
+              "type": "string",
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "milestones": {
+        "default": [],
+        "maxItems": 100,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "goal": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "acceptance": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "state": {
+              "default": "pending",
+              "type": "string",
+              "enum": [
+                "pending",
+                "active",
+                "completed"
+              ]
+            },
+            "dueDate": {
+              "default": "",
+              "type": "string"
+            },
+            "evidence": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            }
+          },
+          "required": [
+            "id",
+            "title"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "tasks": {
+        "default": [],
+        "maxItems": 500,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "milestoneId": {
+              "default": "",
+              "type": "string",
+              "maxLength": 200
+            },
+            "owner": {
+              "default": "",
+              "type": "string",
+              "maxLength": 500
+            },
+            "contributors": {
+              "default": "",
+              "type": "string",
+              "maxLength": 500
+            },
+            "reviewer": {
+              "default": "",
+              "type": "string",
+              "maxLength": 500
+            },
+            "receiver": {
+              "default": "",
+              "type": "string",
+              "maxLength": 500
+            },
+            "boundary": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "input": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "output": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "acceptance": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "dependsOn": {
+              "default": [],
+              "maxItems": 500,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "state": {
+              "default": "todo",
+              "type": "string",
+              "enum": [
+                "todo",
+                "doing",
+                "review",
+                "done"
+              ]
+            },
+            "hasStarted": {
+              "default": false,
+              "type": "boolean"
+            },
+            "priority": {
+              "default": "normal",
+              "type": "string",
+              "enum": [
+                "low",
+                "normal",
+                "high"
+              ]
+            },
+            "blocker": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "followUpDate": {
+              "default": "",
+              "type": "string"
+            },
+            "evidence": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "handoff": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "status": {
+                  "default": "draft",
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "submitted",
+                    "received",
+                    "accepted",
+                    "returned"
+                  ]
+                },
+                "artifacts": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "instructions": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "verification": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "risks": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "nextAction": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "note": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100000
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "title"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "decisions": {
+        "default": [],
+        "maxItems": 500,
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "kind": {
+              "default": "decision",
+              "type": "string",
+              "enum": [
+                "decision",
+                "change",
+                "interface"
+              ]
+            },
+            "topic": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "people": {
+              "default": "",
+              "type": "string",
+              "maxLength": 500
+            },
+            "conclusion": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "impact": {
+              "default": "",
+              "type": "string",
+              "maxLength": 100000
+            },
+            "date": {
+              "default": "",
+              "type": "string"
+            },
+            "followUpDate": {
+              "default": "",
+              "type": "string"
+            },
+            "status": {
+              "default": "pending",
+              "type": "string",
+              "enum": [
+                "pending",
+                "confirmed"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "topic"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "mode"
+    ],
+    "additionalProperties": false
+  },
+  "projectConfig": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "type": "number",
+        "const": 1
+      },
+      "kind": {
+        "type": "string",
+        "const": "kanban-project"
+      },
+      "project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "default": "",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "owner": {
+            "default": "",
+            "type": "string",
+            "maxLength": 200
+          },
+          "state": {
+            "default": "unstarted",
+            "type": "string",
+            "enum": [
+              "unstarted",
+              "active",
+              "paused",
+              "completed"
+            ]
+          },
+          "progress": {
+            "default": 0,
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "update": {
+            "default": "",
+            "type": "string",
+            "maxLength": 100000
+          },
+          "archived": {
+            "default": false,
+            "type": "boolean"
+          },
+          "workflow": {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "novice",
+                  "prototype",
+                  "agile",
+                  "kanban",
+                  "staged",
+                  "shapeup"
+                ]
+              },
+              "collaboration": {
+                "default": "solo",
+                "type": "string",
+                "enum": [
+                  "solo",
+                  "team",
+                  "cross"
+                ]
+              },
+              "guidance": {
+                "default": "detailed",
+                "type": "string",
+                "enum": [
+                  "detailed",
+                  "compact"
+                ]
+              },
+              "wipLimit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "goal": {
+                "default": "",
+                "type": "string",
+                "maxLength": 100000
+              },
+              "scope": {
+                "default": "",
+                "type": "string",
+                "maxLength": 100000
+              },
+              "outOfScope": {
+                "default": "",
+                "type": "string",
+                "maxLength": 100000
+              },
+              "acceptance": {
+                "default": "",
+                "type": "string",
+                "maxLength": 100000
+              },
+              "participants": {
+                "default": [],
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "role": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "contact": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "milestones": {
+                "default": [],
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "goal": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "acceptance": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "state": {
+                      "default": "pending",
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "active",
+                        "completed"
+                      ]
+                    },
+                    "dueDate": {
+                      "default": "",
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "tasks": {
+                "default": [],
+                "maxItems": 500,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "milestoneId": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 200
+                    },
+                    "owner": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "contributors": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "reviewer": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "receiver": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "boundary": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "input": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "output": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "acceptance": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "dependsOn": {
+                      "default": [],
+                      "maxItems": 500,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      }
+                    },
+                    "state": {
+                      "default": "todo",
+                      "type": "string",
+                      "enum": [
+                        "todo",
+                        "doing",
+                        "review",
+                        "done"
+                      ]
+                    },
+                    "hasStarted": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "priority": {
+                      "default": "normal",
+                      "type": "string",
+                      "enum": [
+                        "low",
+                        "normal",
+                        "high"
+                      ]
+                    },
+                    "blocker": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "followUpDate": {
+                      "default": "",
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "handoff": {
+                      "default": {},
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "default": "draft",
+                          "type": "string",
+                          "enum": [
+                            "draft",
+                            "submitted",
+                            "received",
+                            "accepted",
+                            "returned"
+                          ]
+                        },
+                        "artifacts": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "instructions": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "verification": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "risks": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "nextAction": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "note": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 100000
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "decisions": {
+                "default": [],
+                "maxItems": 500,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "kind": {
+                      "default": "decision",
+                      "type": "string",
+                      "enum": [
+                        "decision",
+                        "change",
+                        "interface"
+                      ]
+                    },
+                    "topic": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "people": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    "conclusion": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "impact": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "date": {
+                      "default": "",
+                      "type": "string"
+                    },
+                    "followUpDate": {
+                      "default": "",
+                      "type": "string"
+                    },
+                    "status": {
+                      "default": "pending",
+                      "type": "string",
+                      "enum": [
+                        "pending",
+                        "confirmed"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "topic"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "required": [
+      "schema_version",
+      "kind",
+      "project"
+    ],
+    "additionalProperties": false
+  },
+  "widget": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+      "visible": {
+        "default": false,
+        "type": "boolean"
+      },
+      "pinned": {
+        "default": true,
+        "type": "boolean"
+      },
+      "bounds": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer",
+            "minimum": -100000,
+            "maximum": 100000
+          },
+          "y": {
+            "type": "integer",
+            "minimum": -100000,
+            "maximum": 100000
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 560
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 900
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  }
+}

@@ -1,3 +1,4 @@
+import "./desktop-api";
 import React, { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import ReactMarkdown from "react-markdown";

@@ -7,3 +7,5 @@ test-results/
 *.log
 *.db*
 *.kanban-backup
+src-tauri/target/
+src-tauri/gen/

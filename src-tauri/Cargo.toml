@@ -1,0 +1,46 @@
+[package]
+name = "kanban"
+version = "0.4.0"
+edition = "2021"
+default-run = "kanban"
+
+[[bin]]
+name = "kanban"
+path = "src/main.rs"
+
+[[bin]]
+name = "store-probe"
+path = "src/bin/store-probe.rs"
+required-features = ["test-harness"]
+
+[features]
+test-harness = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-ico"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+jsonschema = { version = "0.33", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_RemoteDesktop", "Win32_System_Power", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Controls", "Win32_UI_Shell"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

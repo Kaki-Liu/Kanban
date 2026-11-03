@@ -1,0 +1,5 @@
+[target.x86_64-pc-windows-gnu]
+linker = "gcc"
+
+[env]
+CC_x86_64_pc_windows_gnu = "gcc"
