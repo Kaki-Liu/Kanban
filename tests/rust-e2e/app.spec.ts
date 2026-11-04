@@ -1,10 +1,12 @@
-import { test, expect, chromium, type Browser } from "@playwright/test";
+import { test, expect, chromium, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, copyFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname, sep } from "node:path";
 import { createServer } from "node:net";
 import type { DesktopAPI } from "../../src/shared/contracts";
+import { today } from "../../src/shared/time";
+import { version } from "../../package.json";
 
 function nativeWindows(processId: number): {title:string; visible:boolean; top:boolean; focused:boolean}[] {
   const script = `
@@ -41,7 +43,14 @@ ConvertTo-Json -InputObject @($items.ToArray()) -Compress
   return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script,"utf16le").toString("base64")], {windowsHide:true,encoding:"utf8"}).trim());
 }
 
-test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历", async () => {
+type RustSession = {
+  launch: () => Promise<Page>;
+  stop: () => Promise<void>;
+  readonly contexts: BrowserContext[];
+  readonly pid: number;
+};
+
+async function withRustApp(run: (session: RustSession) => Promise<void>, now?: string) {
   const dir = mkdtempSync(join(tmpdir(), "kanban-rust-ui-"));
   const server = createServer();
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
@@ -65,7 +74,7 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
     const launch = async () => {
       output = "";
       child = spawn(join(runtime,"kanban.exe"), [], {
-      cwd: runtime, windowsHide: true, env: { ...process.env, PATH: `${process.env.SystemRoot}\\System32;${process.env.SystemRoot}`, KANBAN_E2E: "1", KANBAN_DATA_DIR: join(dir,"data"), KANBAN_CDP_PORT: String(port) },
+      cwd: runtime, windowsHide: true, env: { ...process.env, PATH: `${process.env.SystemRoot}\\System32;${process.env.SystemRoot}`, KANBAN_E2E: "1", KANBAN_DATA_DIR: join(dir,"data"), KANBAN_CDP_PORT: String(port), KANBAN_E2E_NOW: now },
     });
     child.stdout?.on("data", (s) => output += s.toString());
     child.stderr?.on("data", (s) => output += s.toString());
@@ -77,8 +86,20 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
       await expect.poll(() => browser!.contexts().flatMap((c) => c.pages()).map((p) => p.url()), {timeout:15_000}).toContainEqual(expect.stringContaining("window=main"));
       return browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("window=main"))!;
     };
+    await run({ launch, stop, get contexts() { return browser!.contexts(); }, get pid() { return child!.pid!; } });
+  } finally {
+    await stop();
+    if (!resolve(dir).startsWith(resolve(tmpdir()) + sep + "kanban-rust-ui-"))
+      throw new Error("拒绝清理隔离测试目录以外的路径");
+    rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});
+  }
+}
+
+test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历", async () => {
+  await withRustApp(async (session) => {
+    const { launch, stop } = session;
     const page = await launch();
-    const contexts = browser!.contexts();
+    const contexts = session.contexts;
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await expect(page.getByRole("heading", {name:"今天，把事情一件件做好"})).toBeVisible();
@@ -140,10 +161,36 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
       await api.projects.commitConfig(preview.token);
     });
     await page.locator("nav").getByRole("button",{name:/项目/}).click();
+    await page.getByRole("group",{name:"当前项目操作"}).getByRole("button",{name:"Agent 协助",exact:true}).click();
+    const agentDialog = page.getByRole("dialog",{name:"Agent 填写项目信息"});
+    await agentDialog.getByLabel("这次想做什么？",{exact:true}).fill("帮我把下一步安排成一项可以开始的任务");
+    await agentDialog.getByRole("button",{name:"预览发送内容",exact:true}).click();
+    await agentDialog.getByText("发送内容",{exact:true}).click();
+    await expect(agentDialog.getByLabel("Agent 发送内容",{exact:true})).toHaveValue(/帮我把下一步安排成一项可以开始的任务/);
+    await expect(agentDialog.getByLabel("Agent 发送内容",{exact:true})).toHaveValue(/Rust 项目配置/);
+    await agentDialog.getByText("发送内容",{exact:true}).click();
+    await agentDialog.screenshot({path:"test-results/agent-assist.png"});
+    await agentDialog.getByRole("button",{name:"导入 Agent 结果",exact:true}).click();
+    const incoming = await page.evaluate(async () => {
+      const api = window.kanban;
+      const project = (await api.snapshot()).projects[0];
+      const value = JSON.parse(await api.projects.exportConfig(project.id));
+      value.project.update = "已安排下一步任务";
+      return JSON.stringify(value);
+    });
+    await agentDialog.getByLabel("完整项目 JSON",{exact:true}).fill(incoming);
+    await agentDialog.getByRole("button",{name:"校验并预览",exact:true}).click();
+    await expect(agentDialog.getByRole("region",{name:"项目导入预览"})).toContainText("已安排下一步任务");
+    await agentDialog.getByRole("button",{name:"确认更新项目",exact:true}).click();
+    await expect(agentDialog).toHaveCount(0);
     await expect(page.getByRole("button",{name:"展开开发工作台",exact:true})).toBeVisible();
-    await page.getByRole("button",{name:"展开开发工作台",exact:true}).click();
+    await expect(page.getByRole("region",{name:"项目概览"})).toContainText("验证便签勾选体验");
+    await page.screenshot({path:"test-results/rust-project-overview.png"});
+    await page.getByRole("region",{name:"项目概览"}).getByRole("button",{name:"处理任务",exact:true}).click();
+    await expect(page.getByLabel("任务名称",{exact:true})).toBeVisible();
     await expect(page.getByRole("button",{name:"开发任务",exact:true})).toBeVisible();
     const panel = page.getByRole("region",{name:"项目开发流程"});
+    await panel.getByRole("button",{name:"当前行动",exact:true}).click();
     await expect(panel.getByRole("button",{name:"当前行动",exact:true})).toHaveAttribute("aria-pressed","true");
     await expect(panel.locator("input:visible, textarea:visible, select:visible")).toHaveCount(0);
     await panel.getByRole("button",{name:"让 Agent 帮我补全",exact:true}).click();
@@ -210,23 +257,23 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
     });
     const reminder = contexts.flatMap((c) => c.pages()).find((p) => p.url().includes("window=reminder"))!;
     await expect(reminder.locator("article")).toHaveCount(2);
-    const state = nativeWindows(child!.pid!);
+    const state = nativeWindows(session.pid);
     expect(state.find((w) => w.title === "到点提醒")).toMatchObject({visible:true,top:true,focused:false});
     expect(state.find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:true});
     await widget.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.setPinned(false));
-    expect(nativeWindows(child!.pid!).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false});
+    expect(nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false});
     await widget.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.hide());
-    expect(nativeWindows(child!.pid!).find((w) => w.title === "桌面便签")).toMatchObject({visible:false});
+    expect(nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:false});
     await page.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.show());
-    expect(nativeWindows(child!.pid!).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false});
+    expect(nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false});
     await page.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.window.close());
-    expect(nativeWindows(child!.pid!).find((w) => w.title === "本地工作看板")).toMatchObject({visible:false});
-    expect(nativeWindows(child!.pid!).find((w) => w.title === "桌面便签")).toMatchObject({visible:true});
+    expect(nativeWindows(session.pid).find((w) => w.title === "本地工作看板")).toMatchObject({visible:false});
+    expect(nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:true});
     await reminder.locator("article").filter({hasText:"native-snooze"}).getByRole("button",{name:"10 分钟后"}).click();
     await expect(reminder.locator("article")).toHaveCount(1);
     await reminder.getByRole("button",{name:"关闭本次提醒",exact:true}).click();
     await expect(reminder.locator("article")).toHaveCount(0);
-    await expect.poll(() => nativeWindows(child!.pid!).find((w) => w.title === "到点提醒")?.visible).toBe(false);
+    await expect.poll(() => nativeWindows(session.pid).find((w) => w.title === "到点提醒")?.visible).toBe(false);
     await stop();
     const reopened = await launch();
     const persisted = await reopened.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.snapshot());
@@ -234,8 +281,8 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
     expect(persisted.logs.some((l) => l.body === "Rust 日历补记")).toBe(true);
     expect(persisted.notes.some((n) => n.title === "Rust 私人笔记")).toBe(true);
     expect(await reopened.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.reminders.list())).toEqual([]);
-    expect(nativeWindows(child!.pid!).find((w) => w.title === "到点提醒")).toMatchObject({visible:false});
-    expect(nativeWindows(child!.pid!).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false});
+    expect(nativeWindows(session.pid).find((w) => w.title === "到点提醒")).toMatchObject({visible:false});
+    expect(nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false});
     await reopened.locator("nav").getByRole("button",{name:/项目/}).click();
     await expect(reopened.getByRole("button",{name:"收起开发工作台",exact:true})).toBeVisible();
     await reopened.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.projects.save({name:"新流程测试"}));
@@ -249,10 +296,93 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
     await expect(setup.getByRole("button",{name:"当前行动",exact:true})).toHaveAttribute("aria-pressed","true");
     await setup.getByRole("button",{name:"开始这一步",exact:true}).click();
     await expect(setup.getByLabel("任务名称",{exact:true})).not.toHaveValue("");
-  } finally {
-    await stop();
-    if (!resolve(dir).startsWith(resolve(tmpdir()) + sep + "kanban-rust-ui-"))
-      throw new Error("拒绝清理隔离测试目录以外的路径");
-    rmSync(dir,{recursive:true,force:true,maxRetries:10,retryDelay:200});
-  }
+  });
 });
+
+for (const surface of ["main", "widget"] as const) {
+  test(`下午全部完成仅在操作窗口庆祝：${surface}`, async () => {
+    const clock = `${today()}T16:00:00+08:00`;
+    await withRustApp(async (session) => {
+      const page = await session.launch();
+      await expect(page.getByRole("heading", {name:"今天，把事情一件件做好"})).toBeVisible();
+      const initial = await page.evaluate(async () => {
+        const api = window.kanban;
+        const snapshot = await api.snapshot();
+        for (const id of ["preparation", "final"]) {
+          await api.items.save({
+            id, type: id === "final" ? "checklist" : "task", title: id === "final" ? "今日收尾检查" : "准备事项",
+            project_id: null, content_markdown: "",
+            checklist: id === "final" ? [{id:"a",text:"核对服务"},{id:"b",text:"确认告警"}] : [],
+            schedule: {frequency:"once",date:snapshot.today,timezone:"Asia/Shanghai"},
+            reminder: {popup:false,snooze_minutes:10},
+          });
+        }
+        await api.widget.show();
+        const runs = (await api.snapshot()).runs;
+        return { first: runs.find((r) => r.templateId === "preparation")!.id, last: runs.find((r) => r.templateId === "final")!.id };
+      });
+      const widget = session.contexts.flatMap((context) => context.pages()).find((p) => p.url().includes("window=widget"))!;
+      await expect(widget.getByLabel("核对服务",{exact:true})).toBeVisible();
+      const refused = await widget.evaluate(async (id) => {
+        try { await window.kanban.widget.complete(id); return "allowed"; } catch(e) { return String(e); }
+      }, initial.first);
+      expect(refused).toContain("只能完成");
+      await page.evaluate((id) => window.kanban.items.state(id, "completed"), initial.first);
+      await expect(page.locator(".completion-celebration")).toHaveCount(0);
+      await widget.getByLabel("核对服务",{exact:true}).check();
+      await expect(widget.getByRole("button",{name:"完成检查",exact:true})).toHaveCount(0);
+      await widget.getByLabel("确认告警",{exact:true}).check();
+      await expect(widget.getByRole("button",{name:"完成检查",exact:true})).toBeEnabled();
+      await expect(widget.locator(".completion-celebration")).toHaveCount(0);
+      const target = surface === "widget" ? widget : page;
+      const other = surface === "widget" ? page : widget;
+      await other.evaluate(() => {
+        (window as any).celebrationEvents = 0;
+        window.kanban.onCelebrate(() => { (window as any).celebrationEvents++; });
+      });
+      if (surface === "widget") {
+        await widget.getByRole("button",{name:"完成检查",exact:true}).click();
+      } else {
+        await widget.getByRole("button",{name:"今日收尾检查",exact:true}).click();
+        await page.getByRole("button",{name:"确认完成",exact:true}).click();
+      }
+      await expect(target.locator(".completion-message")).toHaveText("🎉 今日任务全部完成");
+      await expect(target.locator(".completion-celebration")).toHaveCSS("pointer-events", "none");
+      await target.waitForTimeout(450); // Capture the short, intentional animation after confetti starts falling.
+      await target.screenshot({path:`test-results/celebration-${surface}.png`});
+      await target.emulateMedia({reducedMotion:"reduce"});
+      await expect(target.locator(".completion-confetti")).not.toBeVisible();
+      await expect(target.locator(".completion-message")).toBeVisible();
+      await expect(target.locator(".completion-celebration")).toHaveCount(0, {timeout:6000});
+      await target.emulateMedia({reducedMotion:"no-preference"});
+      expect(await other.evaluate(() => (window as any).celebrationEvents)).toBe(0);
+      await expect(other.locator(".completion-celebration")).toHaveCount(0);
+      const snapshot = await page.evaluate(() => window.kanban.snapshot());
+      expect(snapshot.runs.every((r) => r.state === "completed")).toBe(true);
+
+      // A new completion in another window after restart cannot replay today's celebration.
+      await session.stop();
+      const reopened = await session.launch();
+      await expect(reopened.getByRole("heading", {name:"今天，把事情一件件做好"})).toBeVisible();
+      await expect(reopened.locator(".completion-celebration")).toHaveCount(0);
+      await reopened.evaluate(async () => {
+        const api = window.kanban;
+        const snapshot = await api.snapshot();
+        await api.items.save({id:"extra",type:"checklist",title:"追加检查",project_id:null,content_markdown:"",checklist:[{id:"a",text:"追加核对"}],schedule:{frequency:"once",date:snapshot.today,timezone:"Asia/Shanghai"},reminder:{popup:false,snooze_minutes:10}});
+        await api.widget.show();
+      });
+      const restoredWidget = session.contexts.flatMap((context) => context.pages()).find((p) => p.url().includes("window=widget"))!;
+      await restoredWidget.getByLabel("追加核对",{exact:true}).check();
+      await restoredWidget.getByRole("button",{name:"完成检查",exact:true}).click();
+      await expect(restoredWidget.getByText("暂时没有待处理的检查")).toBeVisible();
+      await expect(restoredWidget.locator(".completion-celebration")).toHaveCount(0);
+      await expect(reopened.locator(".completion-celebration")).toHaveCount(0);
+      if (surface === "main") {
+        await reopened.getByRole("button",{name:/设置与备份/}).click();
+        const settings = reopened.getByRole("dialog",{name:"设置与数据管理"});
+        await expect(settings.locator(".app-credit")).toHaveText(`by Kashiko · v${version}`);
+        await settings.screenshot({path:"test-results/settings-credit.png"});
+      }
+    }, clock);
+  });
+}

@@ -46,5 +46,5 @@ export const workflowFieldHelp: Record<string, { description: string; example?: 
   "沟通日期": { description: "实际发生这次沟通的日期。" },
   "沟通跟进日期": { description: "下次需要追问或检查结论执行情况的日期，可留空。" },
   "确认情况": { description: "只有已获得实际确认时才登记为已确认。" },
-  "粘贴开发流程 JSON": { description: "粘贴单独的开发流程配置。完整项目文件请从“导入 / 导出项目信息”导入。" },
+  "粘贴开发流程 JSON": { description: "粘贴单独的开发流程配置。完整项目文件请从“导入 Agent 结果”导入。" },
 };

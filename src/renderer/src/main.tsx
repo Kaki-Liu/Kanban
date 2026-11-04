@@ -20,6 +20,9 @@ import { WorkflowPanel } from "./WorkflowPanel";
 import { ProjectConfigForm } from "./ProjectConfigForm";
 import { StickyWidget } from "./StickyWidget";
 import { CalendarPage } from "./CalendarPage";
+import { CompletionCelebration } from "./CompletionCelebration";
+import { version } from "../../../package.json";
+import { projectOverview } from "../../shared/project-overview";
 import {
   createWorkflow,
   nextActions,
@@ -203,7 +206,7 @@ type Modal =
   | { type: "item"; config?: ItemConfig; noteId?: string; initialDate?: string }
   | { type: "run"; id: string }
   | { type: "project"; project?: Project }
-  | { type: "project-config"; project?: Project }
+  | { type: "project-config"; project?: Project; stage?: "assist" | "import" }
   | { type: "log"; log?: WorkLog; initialDate?: string }
   | { type: "note"; note?: Note }
   | { type: "templates" | "import" | "report" | "settings" };
@@ -718,6 +721,7 @@ function App() {
           ✓ {toast}
         </div>
       )}
+      <CompletionCelebration />
       {modal && (
         <Dialog
           busy={working}
@@ -779,6 +783,7 @@ function App() {
           {modal.type === "project-config" && (
             <ProjectConfigForm
               project={modal.project}
+              initialStage={modal.stage}
               onDirty={setDirty}
               onBusy={setWorking}
               onDone={(id) => {
@@ -1391,14 +1396,17 @@ function Projects({
 }) {
   const selected = initialProjectId;
   const [showArchived, setShowArchived] = useState(false);
+  const [workflowFocus, setWorkflowFocus] = useState<{ projectId: string; id: string; request: number }>();
   useEffect(() => {
     if (reveal) setShowArchived(true);
   }, [reveal]);
   const projects = data.projects.filter((p) => showArchived || !p.archived);
   const project = projects.find((p) => p.id === selected) || projects[0];
+  useEffect(() => setWorkflowFocus(undefined), [project?.id]);
   const runs = data.runs.filter(
     (r) => r.config.project_id === project?.id && r.state !== "withdrawn",
   );
+  const overview = project ? projectOverview(project, runs) : null;
   return (
     <div className="page">
       <div className="page-heading">
@@ -1407,11 +1415,14 @@ function Projects({
           <h1>看清进度，推进下一步</h1>
         </div>
         <div className="wf-actions">
-          <button onClick={() => open({ type: "project-config" })}>
-            Agent 填写项目
+          <button className="primary" onClick={() => open({ type: "project-config", stage: "assist" })}>
+            Agent 新建项目
           </button>
-          <button className="primary" onClick={() => open({ type: "project" })}>
-            ＋ 新建项目
+          <button onClick={() => open({ type: "project-config", stage: "import" })}>
+            导入 Agent 结果
+          </button>
+          <button className="text-button" onClick={() => open({ type: "project" })}>
+            手动新建
           </button>
         </div>
       </div>
@@ -1438,7 +1449,9 @@ function Projects({
       ) : (
         <>
           <div className="project-selector">
-            {projects.map((p) => (
+            {projects.map((p) => {
+              const summary = projectOverview(p, data.runs);
+              return (
               <button
                 className={project?.id === p.id ? "active" : ""}
                 key={p.id}
@@ -1455,20 +1468,19 @@ function Projects({
               >
                 <strong>{p.name}</strong>
                 <small>
-                  {p.workflow
-                    ? `${p.workflow.milestones.filter((m) => m.state === "completed").length}/${p.workflow.milestones.length} 个里程碑已验收`
-                    : `${states[p.state]} · ${p.progress}%`}
+                  {p.workflow ? summary.progressLabel : `${states[p.state]} · ${p.progress}%`}
                   {p.archived ? " · 已归档" : ""}
                 </small>
                 <div className="progress-track">
                   <i
                     style={{
-                      width: `${p.workflow ? (100 * p.workflow.milestones.filter((m) => m.state === "completed").length) / Math.max(1, p.workflow.milestones.length) : p.progress}%`,
+                      width: `${summary.progress}%`,
                     }}
                   />
                 </div>
+                <span className="project-card-next">{summary.next?.title || (summary.total > 0 && summary.done === summary.total ? "任务已完成" : "待安排下一步")}</span>
               </button>
-            ))}
+            );})}
           </div>
           {project && (
             <>
@@ -1478,28 +1490,41 @@ function Projects({
                     {project.name}{" "}
                     <span className="badge">{states[project.state]}</span>
                   </h2>
-                  <p className="muted">
-                    {project.description || "暂无项目说明"}
-                  </p>
-                  <p className="meta">
-                    负责人：{project.owner || "未设置"} ·{" "}
-                    {project.workflow
-                      ? "开发流程按里程碑验收"
-                      : "项目进度手动维护"}{" "}
-                    · ID：{project.id}
-                  </p>
+                  {(project.workflow?.goal || project.description) && <p className="muted">{project.workflow?.goal || project.description}</p>}
+                  {project.owner && <p className="meta">{project.owner}</p>}
                 </div>
-                <div className="wf-actions">
+                <div className="wf-actions" role="group" aria-label="当前项目操作">
+                  <button onClick={() => open({ type: "project-config", project, stage: "assist" })}>Agent 协助</button>
                   <button
-                    onClick={() => open({ type: "project-config", project })}
+                    onClick={() => open({ type: "project-config", project, stage: "import" })}
                   >
-                    导入 / 导出项目信息
+                    导入 Agent 结果
                   </button>
                   <button onClick={() => open({ type: "project", project })}>
                     编辑项目
                   </button>
                 </div>
               </div>
+              {overview && <section className="project-overview" aria-label="项目概览">
+                <div className="project-progress-heading">
+                  <span>{overview.progressLabel}</span><strong>{overview.progress}%</strong>
+                </div>
+                <div className="progress-track"><i style={{ width: `${overview.progress}%` }} /></div>
+                <dl className="project-metrics">
+                  <div><dt>任务完成</dt><dd>{overview.done}<small> / {overview.total}</small></dd></div>
+                  <div><dt>进行中</dt><dd>{overview.doing}</dd></div>
+                  <div><dt>待验收</dt><dd>{overview.review}</dd></div>
+                  <div className={overview.blocked ? "has-blockers" : ""}><dt>受阻</dt><dd>{overview.blocked}</dd></div>
+                </dl>
+                <div className="project-next-action">
+                  <div><small>下一步</small><strong>{overview.next?.title || (overview.total > 0 && overview.done === overview.total ? "任务已完成，可以检查交付结果" : "让 Agent 帮你安排可开始的任务")}</strong></div>
+                  {overview.next ? <button className="primary" onClick={() => {
+                    const next = overview.next!;
+                    if (next.workflow) setWorkflowFocus((previous) => ({ projectId: project.id, id: next.id, request: (previous?.request || 0) + 1 }));
+                    else open({ type: "run", id: next.id });
+                  }}>处理任务</button> : <button onClick={() => open({ type: "project-config", project })}>Agent 协助</button>}
+                </div>
+              </section>}
               {project.update && (
                 <div className="project-update">
                   <small>最新进展</small>
@@ -1512,6 +1537,7 @@ function Projects({
                 revision={data.revision}
                 today={data.today}
                 onDirty={onWorkflowDirty}
+                focusTask={workflowFocus?.projectId === project.id ? workflowFocus : undefined}
                 onProjectConfig={() =>
                   open({ type: "project-config", project })
                 }
@@ -2594,6 +2620,7 @@ function SettingsPanel({ data, perform, finish, notify }: Actions) {
           </button>
         </div>
       )}
+      <footer className="app-credit">by Kashiko <span>· v{version}</span></footer>
     </div>
   );
 }

@@ -75,8 +75,9 @@ test("保存模板文件，导入 Agent 文件，一次填写完整项目与协�
   }, path);
   await openProjects();
   await page
-    .getByRole("button", { name: "Agent 填写项目", exact: true })
+    .getByRole("button", { name: "Agent 新建项目", exact: true })
     .click();
+  await dialog().getByText("模板与配置文件", { exact: true }).click();
   await dialog()
     .getByRole("button", { name: "保存模板文件", exact: true })
     .click();
@@ -151,6 +152,7 @@ test("保存模板文件，导入 Agent 文件，一次填写完整项目与协�
     },
   ];
   writeFileSync(path, JSON.stringify(config, null, 2), "utf8");
+  await dialog().getByRole("button", { name: "导入 Agent 结果", exact: true }).click();
   await dialog()
     .getByRole("button", { name: "选择 JSON 文件", exact: true })
     .click();
@@ -227,9 +229,10 @@ test("完整项目更新预览与导出隐私，已执行任务结果受保护",
     });
   }, workflow);
   await openProjects();
-  await page
-    .getByRole("button", { name: "导入 / 导出项目信息", exact: true })
+  await page.getByRole("group", { name: "当前项目操作" })
+    .getByRole("button", { name: "Agent 协助", exact: true })
     .click();
+  await dialog().getByText("模板与配置文件", { exact: true }).click();
   await dialog()
     .getByRole("button", { name: "预览完整项目模板", exact: true })
     .click();
@@ -244,6 +247,7 @@ test("完整项目更新预览与导出隐私，已执行任务结果受保护",
   });
   config.project.workflow.goal = "文件填入的新目标";
   config.project.workflow.tasks[0].evidence = "不能覆盖人工结果";
+  await dialog().getByRole("button", { name: "导入 Agent 结果", exact: true }).click();
   await dialog()
     .getByLabel("完整项目 JSON", { exact: true })
     .fill(JSON.stringify(config));
@@ -277,8 +281,8 @@ test("错误和过期项目导入不写入，文本保留并可重新预览", as
     }),
   );
   await openProjects();
-  await page
-    .getByRole("button", { name: "导入 / 导出项目信息", exact: true })
+  await page.getByRole("group", { name: "当前项目操作" })
+    .getByRole("button", { name: "导入 Agent 结果", exact: true })
     .click();
   const input = dialog().getByLabel("完整项目 JSON", { exact: true });
   await input.fill(

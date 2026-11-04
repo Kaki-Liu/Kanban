@@ -463,6 +463,43 @@ impl Store {
             s.put_run(&run)
         })
     }
+    pub fn completion_day(&self, previous: &Value) -> Result<Option<String>> {
+        let day = self.day();
+        if !pending(previous) || text(previous, "date") != day {
+            return Ok(None);
+        }
+        let current = self.get_run(text(previous, "id"))?;
+        if text(&current, "state") != "completed"
+            || text(&current, "completedAt") < at_time(&day, "15:00")?.as_str()
+        {
+            return Ok(None);
+        }
+        let all_done = self
+            .runs()?
+            .iter()
+            .filter(|run| text(run, "date") == day && text(run, "state") != "withdrawn")
+            .all(|run| text(run, "state") == "completed");
+        Ok(all_done.then_some(day))
+    }
+
+    pub fn complete_widget(&mut self, id: &str) -> Result<Option<String>> {
+        let snapshot = self.widget_snapshot()?;
+        let run = snapshot["checklists"]
+            .as_array()
+            .and_then(|runs| runs.iter().find(|run| text(run, "id") == id))
+            .ok_or("便签只能完成今天仍待处理的检查清单")?;
+        let all_checked = run["config"]["checklist"].as_array().is_some_and(|items| {
+            items
+                .iter()
+                .all(|item| run["checks"][text(item, "id")] == true)
+        });
+        if !all_checked {
+            return Err("请先勾完所有检查项".into());
+        }
+        self.state(id, "completed", "", "")?;
+        // Celebration is optional feedback after the actual save has succeeded.
+        Ok(self.completion_day(run).unwrap_or(None))
+    }
     pub(crate) fn put_log(&mut self, input: Value) -> Result<()> {
         let mut log = crate::validation::validate("log", input)?;
         self.project_exists(&log["projectId"])?;

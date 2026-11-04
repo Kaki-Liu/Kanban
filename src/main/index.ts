@@ -19,6 +19,7 @@ import { z } from "zod";
 import { Store } from "./store";
 import { settingsSchema, dateSchema } from "../shared/contracts";
 import type { Run, ReportEntry } from "../shared/contracts";
+import { atTime } from "../shared/time";
 import { parseProjectConfig } from "../shared/project-config";
 import {
   clampWidgetBounds,
@@ -297,6 +298,13 @@ function registerHandlers(): void {
       if (runId !== undefined) store.getRun(id.parse(runId));
       showMain(runId);
     },
+    "widget.complete": (runId) => {
+      const run = store.widgetSnapshot().checklists.find((r) => r.id === id.parse(runId));
+      if (!run) throw new Error("便签只能完成今天仍待处理的检查清单");
+      if (!run.config.checklist.every((item) => run.checks[item.id]))
+        throw new Error("请先勾完所有检查项");
+      store.state(run.id, "completed");
+    },
     "items.save": (c, n) =>
       store.saveItem(c, n === undefined ? undefined : id.parse(n)),
     "items.mode": (i, p, a) =>
@@ -539,6 +547,7 @@ function registerHandlers(): void {
               "widget.setPinned",
               "widget.hide",
               "widget.openMain",
+              "widget.complete",
               "items.check",
             ].includes(channel)
           )
@@ -549,7 +558,18 @@ function registerHandlers(): void {
           )
             throw new Error("便签只能勾选今天的检查清单");
         }
+        const completing = channel === "widget.complete" || channel === "items.state";
+        if (completing) store.ensureToday();
+        const previousRun = completing ? store.getRun(id.parse(args[0])) : undefined;
         const value = await fn(...args);
+        if (previousRun && ["pending", "doing"].includes(previousRun.state)) {
+          const completed = store.getRun(previousRun.id);
+          const day = store.day();
+          if (previousRun.date === day && completed.state === "completed"
+            && completed.completedAt && completed.completedAt >= atTime(day, "15:00")
+            && store.runs().filter((r) => r.date === day && r.state !== "withdrawn").every((r) => r.state === "completed"))
+            win?.webContents.send("kb:celebrate", day);
+        }
         // A read may generate today's runs at midnight before the scheduler gets its turn.
         if (!readOnly.has(channel) || previousRevision !== store.revision()) {
           broadcast();

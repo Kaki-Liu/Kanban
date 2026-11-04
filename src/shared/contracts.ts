@@ -266,6 +266,7 @@ export interface DesktopAPI {
     setPinned(pinned: boolean): Promise<void>;
     hide(): Promise<void>;
     openMain(runId?: string): Promise<void>;
+    complete(runId: string): Promise<void>;
   };
   items: {
     save(config: ItemConfig, noteId?: string): Promise<void>;
@@ -334,5 +335,6 @@ export interface DesktopAPI {
   };
   onChange(callback: () => void): () => void;
   onOpenRun(callback: (id: string) => void): () => void;
+  onCelebrate(callback: (day: string) => void): () => void;
 }
 export { today, atTime, matches, editable } from "./time";

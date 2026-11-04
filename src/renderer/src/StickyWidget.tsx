@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { WidgetSnapshot } from "../../shared/contracts";
 import { today } from "../../shared/time";
 import "./widget.css";
+import { CompletionCelebration } from "./CompletionCelebration";
 
 const api = window.kanban;
 const timeFormat = new Intl.DateTimeFormat("zh-CN", {
@@ -208,6 +209,14 @@ export function StickyWidget() {
                     </label>
                   ))}
                   {complete && (
+                    <div className="sticky-complete-actions">
+                    <button
+                      className="sticky-confirm"
+                      disabled={busy}
+                      onClick={() => void act(() => api.widget.complete(run.id))}
+                    >
+                      完成检查
+                    </button>
                     <button
                       className="sticky-confirm"
                       disabled={busy}
@@ -215,8 +224,9 @@ export function StickyWidget() {
                         void act(() => api.widget.openMain(run.id))
                       }
                     >
-                      已全部勾选，确认结果 →
+                      填写结果 ↗
                     </button>
+                    </div>
                   )}
                 </article>
               );
@@ -267,6 +277,7 @@ export function StickyWidget() {
           打开看板 ↗
         </button>
       </footer>
+      <CompletionCelebration compact />
     </div>
   );
 }

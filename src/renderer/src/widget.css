@@ -147,6 +147,15 @@ body:has(.sticky-widget) {
   border-color: #d7e3d5;
   background: #f1f6ec;
 }
+.sticky-complete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 23px;
+}
+.sticky-complete-actions .sticky-confirm {
+  margin-left: 0;
+}
 .sticky-empty {
   color: #858d7e;
   padding: 12px 0;

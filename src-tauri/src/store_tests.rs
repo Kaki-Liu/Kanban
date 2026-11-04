@@ -23,6 +23,80 @@ fn config(id: &str) -> Value {
 }
 
 #[test]
+fn afternoon_final_completion_requires_every_today_run_completed() {
+    let mut fixture = Fixture::new();
+    let s = &mut fixture.store;
+    s.save_item(config("a"), None).unwrap();
+    s.save_item(config("b"), None).unwrap();
+    let runs = s.runs().unwrap();
+    let a = text(&runs[0], "id");
+    let b = text(&runs[1], "id");
+    s.set_now("2026-11-03T06:59:59Z").unwrap();
+    let previous = s.get_run(a).unwrap();
+    s.state(a, "completed", "", "").unwrap();
+    assert_eq!(s.completion_day(&previous).unwrap(), None);
+    let previous = s.get_run(b).unwrap();
+    s.state(b, "completed", "", "").unwrap();
+    assert_eq!(s.completion_day(&previous).unwrap(), None);
+
+    s.state(b, "pending", "", "").unwrap();
+    s.set_now("2026-11-03T07:00:00Z").unwrap();
+    let previous = s.get_run(b).unwrap();
+    s.state(b, "completed", "", "").unwrap();
+    assert_eq!(
+        s.completion_day(&previous).unwrap(),
+        Some("2026-11-03".into())
+    );
+    assert_eq!(s.completion_day(&s.get_run(b).unwrap()).unwrap(), None);
+
+    s.state(a, "pending", "", "").unwrap();
+    s.state(a, "skipped", "", "").unwrap();
+    s.state(b, "pending", "", "").unwrap();
+    let previous = s.get_run(b).unwrap();
+    s.state(b, "completed", "", "").unwrap();
+    assert_eq!(s.completion_day(&previous).unwrap(), None);
+
+    s.set_now("2026-11-04T08:00:00Z").unwrap();
+    s.state(b, "pending", "", "").unwrap();
+    let previous = s.get_run(b).unwrap();
+    s.state(b, "completed", "", "").unwrap();
+    assert_eq!(s.completion_day(&previous).unwrap(), None);
+}
+
+#[test]
+fn widget_completion_checks_scope_and_cannot_finish_unchecked_items() {
+    let mut fixture = Fixture::new();
+    let s = &mut fixture.store;
+    s.set_now("2026-11-03T08:00:00Z").unwrap();
+    s.save_item(config("daily"), None).unwrap();
+    let id = text(&s.runs().unwrap()[0], "id").to_string();
+    assert!(s.complete_widget(&id).is_err());
+    s.check(&id, "a", true).unwrap();
+    assert!(s.complete_widget(&id).is_err());
+    s.check(&id, "b", true).unwrap();
+    assert_eq!(s.completion_day(&s.get_run(&id).unwrap()).unwrap(), None);
+    assert_eq!(s.complete_widget(&id).unwrap(), Some("2026-11-03".into()));
+    assert!(s.complete_widget(&id).is_err());
+    s.state(&id, "pending", "", "").unwrap();
+    s.set_mode("daily", true, false).unwrap();
+    assert!(s.complete_widget(&id).is_err());
+    s.set_mode("daily", false, false).unwrap();
+    s.set_now("2026-11-04T08:00:00Z").unwrap();
+    assert!(s.complete_widget(&id).is_err());
+    let mut task = config("plain");
+    task["type"] = json!("task");
+    task["checklist"] = json!([]);
+    s.save_item(task, None).unwrap();
+    let plain = s
+        .runs()
+        .unwrap()
+        .into_iter()
+        .find(|r| r["templateId"] == "plain")
+        .unwrap();
+    assert!(s.complete_widget(text(&plain, "id")).is_err());
+}
+
+#[test]
 fn only_today_generated_and_pause_recovery() {
     let mut f = Fixture::new();
     let s = &mut f.store;

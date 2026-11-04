@@ -77,11 +77,13 @@ export function ProjectConfigForm({
   onDone,
   onDirty,
   onBusy,
+  initialStage = "assist",
 }: {
   project?: Project;
   onDone: (id: string) => void;
   onDirty: (dirty: boolean) => void;
   onBusy?: (busy: boolean) => void;
+  initialStage?: "assist" | "import";
 }) {
   const [template, setTemplate] = useState("");
   const [text, setText] = useState("");
@@ -89,13 +91,16 @@ export function ProjectConfigForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [stage, setStage] = useState(initialStage);
+  const [request, setRequest] = useState("");
+  const [prompt, setPrompt] = useState("");
   const busyRef = useRef(false);
   const callbacks = useRef({ onDirty, onBusy });
   callbacks.current = { onDirty, onBusy };
 
   useEffect(() => {
-    callbacks.current.onDirty(Boolean(text.trim()));
-  }, [text]);
+    callbacks.current.onDirty(Boolean(text.trim() || request.trim()));
+  }, [text, request]);
   useEffect(
     () => () => {
       callbacks.current.onDirty(false);
@@ -139,20 +144,17 @@ export function ProjectConfigForm({
       if (value.length > 2_000_000)
         throw new Error("文件过大，请使用不超过 2 MB 的项目配置。");
       change(value);
-      setNotice("文件已读取，请校验并预览；尚未写入项目。");
+      setPreview(await api.projects.previewConfig(value, project?.id));
+      setNotice("文件已校验，请确认变更。");
     });
   }
 
   return (
     <div className="project-config-form">
-      <p className="pc-intro">
-        {project
-          ? `填写「${project.name}」的完整项目信息`
-          : "让 Agent 填好一份文件，再创建完整项目"}
-      </p>
-      <p className="hint">
-        项目名称、说明、负责人、状态、进度、目标、开发路线、里程碑、任务、参与人、沟通和交接都能一起填写。导入前先看变更，确认后一次保存。
-      </p>
+      <div className="pc-tabs" aria-label="Agent 协助步骤">
+        <button disabled={busy} aria-pressed={stage === "assist"} onClick={() => setStage("assist")}>交给 Agent 规划</button>
+        <button disabled={busy} aria-pressed={stage === "import"} onClick={() => setStage("import")}>导入 Agent 结果</button>
+      </div>
       {error && (
         <div className="pc-error" role="alert">
           {error}
@@ -164,16 +166,35 @@ export function ProjectConfigForm({
         </p>
       )}
       <fieldset disabled={busy}>
-        <section className="pc-step">
-          <h3>
-            <span>1</span> 把模板交给 Agent
-          </h3>
+        <section className="pc-step" hidden={stage !== "assist"}>
+          <label htmlFor="agent-project-request">这次想做什么？</label>
+          <textarea id="agent-project-request" className="pc-request" value={request}
+            onChange={(event) => { setRequest(event.target.value); setPrompt(""); }}
+            rows={3} maxLength={10000}
+            placeholder="例如：给值班同事做一个检查工具，先实现每天提醒和检查结果记录。"
+          />
           <p className="hint">
-            {project
-              ? "导出当前项目，让 Agent 保留已有 ID 后修改。"
-              : "新建模板中的示例文字需要替换为真实内容。已有项目请从项目内导出，保留 ID。"}{" "}
-            文件不包含普通笔记或工作流水；包含你填写的人员和项目内容，请先检查。
+            {project ? `会带上「${project.name}」的现有信息。` : "先用一句话描述想法。"}
+            复制给外部 Agent 对话，补齐信息后将生成的文件导入。
           </p>
+          <div className="pc-actions">
+            <button className="primary" type="button" onClick={() => void act(async () => {
+              const value = await getTemplate();
+              const content = projectConfigAgentPrompt(value, request);
+              setPrompt(content);
+              await api.window.copyText(content);
+              setNotice("已复制，粘贴给外部 Agent 即可开始。拿到文件后选择“导入 Agent 结果”。");
+            })}>复制给 Agent</button>
+            <button type="button" onClick={() => void act(async () => {
+              setPrompt(projectConfigAgentPrompt(await getTemplate(), request));
+            })}>预览发送内容</button>
+          </div>
+          {prompt && <details className="pc-template">
+            <summary>发送内容</summary>
+            <textarea aria-label="Agent 发送内容" readOnly value={prompt} rows={10} />
+          </details>}
+          <details className="pc-template">
+            <summary>模板与配置文件</summary>
           <div className="pc-actions">
             <button
               type="button"
@@ -197,18 +218,6 @@ export function ProjectConfigForm({
             >
               保存模板文件
             </button>
-            <button
-              type="button"
-              onClick={() =>
-                void act(async () => {
-                  const value = template || (await getTemplate());
-                  await api.window.copyText(projectConfigAgentPrompt(value));
-                  setNotice("Agent 提示与完整模板已复制。");
-                })
-              }
-            >
-              复制给 Agent
-            </button>
           </div>
           {template && (
             <details className="pc-template" open>
@@ -222,12 +231,10 @@ export function ProjectConfigForm({
               />
             </details>
           )}
+          </details>
         </section>
 
-        <section className="pc-step">
-          <h3>
-            <span>2</span> 导入 Agent 填好的文件
-          </h3>
+        <section className="pc-step" hidden={stage !== "import"}>
           <div className="pc-actions">
             <button type="button" onClick={() => void chooseFile()}>
               选择 JSON 文件
@@ -244,10 +251,10 @@ export function ProjectConfigForm({
             onChange={(e) => change(e.target.value)}
             placeholder='{"schema_version":1,"kind":"kanban-project","project":{...}}'
           />
-          <p className="hint">
+          <details className="pc-template"><summary>导入规则</summary><p className="hint">
             同 ID 更新现有项目；新建项目可省略项目
             ID。未出现的流程条目保留，已操作的任务和已确认记录受保护。项目基本信息按完整配置填写，省略的可选基本字段会恢复默认值。
-          </p>
+          </p></details>
           <button
             type="button"
             className="primary"
@@ -267,10 +274,10 @@ export function ProjectConfigForm({
           </button>
         </section>
 
-        {preview && (
+        {stage === "import" && preview && (
           <section className="pc-step pc-preview" aria-label="项目导入预览">
             <h3>
-              <span>3</span> 确认{preview.action === "create" ? "创建" : "更新"}
+              确认{preview.action === "create" ? "创建" : "更新"}
               「{preview.name}」
             </h3>
             <p className="hint">

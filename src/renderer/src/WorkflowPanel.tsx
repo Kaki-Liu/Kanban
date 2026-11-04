@@ -50,11 +50,13 @@ function WorkbenchDisclosure({
   summary,
   dirty,
   children,
+  reveal = 0,
 }: {
   projectId: string;
   summary: string;
   dirty: boolean;
   children: React.ReactNode;
+  reveal?: number;
 }) {
   const storageKey = `kanban:workbench:${projectId}:expanded`;
   const contentId = useId();
@@ -74,6 +76,11 @@ function WorkbenchDisclosure({
       // A local display preference must not block editing if storage is unavailable.
     }
   };
+  useEffect(() => {
+    if (!reveal) return;
+    setExpanded(true);
+    try { localStorage.setItem(storageKey, "true"); } catch { /* display preference only */ }
+  }, [reveal, storageKey]);
   return (
     <section className="workflow-panel" aria-label="项目开发流程">
       <button
@@ -205,6 +212,7 @@ export function WorkflowPanel({
   onReminder,
   onDirty,
   onProjectConfig,
+  focusTask,
 }: {
   project: Project;
   revision: number;
@@ -212,6 +220,7 @@ export function WorkflowPanel({
   onReminder: (title: string, body: string, date: string) => void;
   onDirty?: (dirty: boolean) => void;
   onProjectConfig?: () => void;
+  focusTask?: { id: string; request: number };
 }) {
   const [workflow, setWorkflow] = useState<Workflow>(
     () => project.workflow || createWorkflow("novice"),
@@ -225,6 +234,18 @@ export function WorkflowPanel({
   const [tab, setTab] = useState("overview");
   const [milestoneId, setMilestoneId] = useState("");
   const [taskId, setTaskId] = useState("");
+  const taskEditorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusTask) return;
+    setTaskId(focusTask.id);
+    setTab("tasks");
+  }, [focusTask]);
+  useEffect(() => {
+    if (tab === "tasks" && taskId) {
+      const frame = requestAnimationFrame(() => taskEditorRef.current?.scrollIntoView({ block: "start" }));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [tab, taskId]);
   const [decisionId, setDecisionId] = useState("");
   const [importText, setImportText] = useState("");
   const [preview, setPreview] = useState<{
@@ -438,6 +459,7 @@ export function WorkflowPanel({
           : "按需展开，选择开发路线与协作方式"
       }
       dirty={dirty}
+      reveal={focusTask?.request}
     >
       {error && (
         <div className="wf-error" role="alert">
@@ -1004,7 +1026,7 @@ export function WorkflowPanel({
                   )}
                 </>}
                 {selectedTask && (
-                  <div className="wf-task-editor">
+                  <div className="wf-task-editor" ref={taskEditorRef}>
                     <div className="wf-section-heading">
                       <h3>{selectedTask.title || "新任务"}</h3>
                       <div className="wf-actions">

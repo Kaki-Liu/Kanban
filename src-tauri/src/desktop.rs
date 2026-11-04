@@ -533,6 +533,7 @@ fn handle(window: &WebviewWindow, channel: &str, args: Vec<Value>) -> Result<Val
             "widget.setPinned",
             "widget.hide",
             "widget.openMain",
+            "widget.complete",
             "items.check",
             "window.close",
             "window.drag",
@@ -560,6 +561,31 @@ fn handle(window: &WebviewWindow, channel: &str, args: Vec<Value>) -> Result<Val
     let revision = st.store.lock().map_err(err)?.revision()?;
     let result = (|| -> Result<Value> {
         match channel {
+            "items.state" => {
+                let id = string(&args, 0)?;
+                let celebration = {
+                    let mut store = st.store.lock().map_err(err)?;
+                    store.ensure_today()?;
+                    let previous = store.get_run(&id)?;
+                    store.dispatch(channel, args.clone())?;
+                    store.completion_day(&previous).unwrap_or(None)
+                };
+                if let Some(day) = celebration {
+                    let _ = app.emit_to(tauri::EventTarget::webview_window(label), "kb:celebrate", day);
+                }
+                Ok(Value::Null)
+            }
+            "widget.complete" => {
+                let celebration = st
+                    .store
+                    .lock()
+                    .map_err(err)?
+                    .complete_widget(&string(&args, 0)?)?;
+                if let Some(day) = celebration {
+                    let _ = app.emit_to(tauri::EventTarget::webview_window(label), "kb:celebrate", day);
+                }
+                Ok(Value::Null)
+            }
             "window.close" => {
                 close_window(app, label)?;
                 Ok(Value::Null)
@@ -885,6 +911,13 @@ pub fn run() {
             let dir = data_dir().map_err(std::io::Error::other)?;
             std::fs::create_dir_all(&dir)?;
             let mut store = Store::new(dir.join("kanban.db")).map_err(std::io::Error::other)?;
+            if std::env::var_os("KANBAN_E2E").is_some()
+                && std::env::var_os("KANBAN_DATA_DIR").is_some()
+            {
+                if let Ok(now) = std::env::var("KANBAN_E2E_NOW") {
+                    store.set_now(&now).map_err(std::io::Error::other)?;
+                }
+            }
             store
                 .prepare_version(env!("CARGO_PKG_VERSION"))
                 .map_err(std::io::Error::other)?;

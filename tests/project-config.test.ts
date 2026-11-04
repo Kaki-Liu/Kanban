@@ -38,7 +38,7 @@ afterEach(() => {
 describe("完整项目配置文件", () => {
   test("给 Agent 的提示包含现有模板和全部可选字段的 Schema", () => {
     const prompt = projectConfigAgentPrompt(
-      store.exportProjectConfig("existing"),
+      store.exportProjectConfig("existing"), "先把提醒流程做简单一些",
     );
     expect(prompt).toContain('"id": "existing"');
     expect(prompt).toContain('"kanban-project"');
@@ -47,6 +47,7 @@ describe("完整项目配置文件", () => {
     expect(prompt).toContain('"submitted"');
     expect(prompt).toContain('"accepted"');
     expect(prompt).toContain("不要猜测真实人员的确认");
+    expect(prompt).toContain("先把提醒流程做简单一些");
   });
   test("新建文件覆盖所有表单字段，预览不写入，确认使用同一个稳定 ID", () => {
     const draft = parseProjectConfig(newProjectConfig());

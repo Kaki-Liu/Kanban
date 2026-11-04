@@ -14,6 +14,7 @@ const api: DesktopAPI = {
     setPinned: (pinned) => call("widget.setPinned", pinned),
     hide: () => call("widget.hide"),
     openMain: (runId) => call("widget.openMain", runId),
+    complete: (runId) => call("widget.complete", runId),
   },
   items: {
     save: (c, n) => call("items.save", c, n),
@@ -76,6 +77,11 @@ const api: DesktopAPI = {
     const listener = (_: unknown, id: string) => cb(id);
     ipcRenderer.on("kb:open-run", listener);
     return () => ipcRenderer.removeListener("kb:open-run", listener);
+  },
+  onCelebrate: (cb) => {
+    const listener = (_: unknown, day: string) => cb(day);
+    ipcRenderer.on("kb:celebrate", listener);
+    return () => ipcRenderer.removeListener("kb:celebrate", listener);
   },
 };
 contextBridge.exposeInMainWorld("kanban", api);

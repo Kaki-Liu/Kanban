@@ -93,7 +93,7 @@ test("今日事项、中文输入保护、完成结果和汇报去重", async ()
 
 test("项目和笔记、配置导入以及窗口安全设置", async () => {
   await page.locator("nav").getByRole("button", { name: "项目" }).click();
-  await page.getByRole("button", { name: "＋ 新建项目" }).click();
+  await page.getByRole("button", { name: "手动新建", exact: true }).click();
   await page.getByLabel("项目名称").fill("内部运维工具");
   await page.getByLabel("进度 %").fill("35");
   await page.getByLabel("最新进展").fill("完成需求确认，开始实施");

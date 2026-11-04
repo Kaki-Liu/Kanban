@@ -936,6 +936,18 @@ hr {
   padding: 12px;
   border-radius: 5px;
 }
+.app-credit {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  color: #7e8899;
+  font-size: 12px;
+  text-align: right;
+  letter-spacing: 0.15px;
+}
+.app-credit span {
+  color: #929aaa;
+}
 .restore-preview {
   margin-top: 20px;
   border: 1px solid #ead8b5;
@@ -976,7 +988,48 @@ hr {
   min-width: 190px;
   text-align: left;
   padding: 17px;
+  max-width: 280px;
+  flex-shrink: 0;
 }
+.project-card-next {
+  display: block;
+  margin-top: 12px;
+  color: #65748b;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-overview {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  background: #fff;
+  margin: 16px 0;
+}
+.project-progress-heading, .project-next-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.project-progress-heading { color: #71809a; font-size: 12px; }
+.project-progress-heading strong { color: #3869df; font-size: 18px; }
+.project-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+.project-metrics dt { color: #73829a; font-size: 12px; }
+.project-metrics dd { margin: 6px 0 0; font-size: 24px; font-weight: 600; }
+.project-metrics small { color: #929db0; font-size: 13px; font-weight: 400; }
+.project-metrics .has-blockers dd { color: #b67b35; }
+.project-next-action { border-top: 1px solid var(--border); padding-top: 16px; }
+.project-next-action div { min-width: 0; }
+.project-next-action small { display: block; color: #7b8ba4; margin-bottom: 6px; }
+.project-next-action strong { display: block; overflow-wrap: anywhere; }
+.project-next-action button { flex-shrink: 0; }
 .project-selector > button.active {
   border-color: #8daef6;
   background: #f6f9ff;

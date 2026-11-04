@@ -1,14 +1,15 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { DesktopAPI } from "../../shared/contracts";
 
 const call = <T>(channel: string, ...args: unknown[]): Promise<T> =>
   invoke<T>("kb_call", { channel, args: args.map((v) => v === undefined ? null : v) });
 
-function subscribe<T>(name: string, callback: (payload: T) => void): () => void {
+function subscribe<T>(name: string, callback: (payload: T) => void, windowLabel?: string): () => void {
   let stopped = false;
   let unlisten: UnlistenFn | undefined;
-  void listen<T>(name, (event) => callback(event.payload)).then((stop) => {
+  void listen<T>(name, (event) => callback(event.payload), windowLabel ? { target: {kind:"WebviewWindow", label:windowLabel} } : undefined).then((stop) => {
     if (stopped) stop();
     else unlisten = stop;
   });
@@ -22,6 +23,7 @@ if (isTauri()) {
       get: () => call("widget.get"), show: () => call("widget.show"),
       setPinned: (pinned) => call("widget.setPinned", pinned),
       hide: () => call("widget.hide"), openMain: (id) => call("widget.openMain", id),
+      complete: (id) => call("widget.complete", id),
     },
     items: {
       save: (c, n) => call("items.save", c, n),
@@ -65,6 +67,7 @@ if (isTauri()) {
     },
     onChange: (cb) => subscribe("kb:changed", cb),
     onOpenRun: (cb) => subscribe<string>("kb:open-run", cb),
+    onCelebrate: (cb) => subscribe<string>("kb:celebrate", cb, getCurrentWebviewWindow().label),
   };
   window.kanban = api;
   document.addEventListener("mousedown", (event) => {
