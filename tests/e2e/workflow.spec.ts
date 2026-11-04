@@ -25,15 +25,18 @@ async function openProjects() {
   await expect(panel()).toBeVisible();
   const expand = panel().getByRole("button", { name: "展开开发工作台", exact: true });
   if (await expand.isVisible()) await expand.click();
+  const plan = panel().getByRole("button", { name: "计划与设置", exact: true });
+  if ((await snapshot()).projects.find((p) => p.id === projectId)?.workflow)
+    await plan.click();
 }
 async function saveFlow() {
   await panel()
-    .getByRole("button", { name: "保存开发流程", exact: true })
+    .getByRole("button", { name: "保存全部修改", exact: true })
     .click();
   await expect(panel().getByRole("status")).toHaveText("开发流程已保存");
   await expect(
-    panel().getByRole("button", { name: "保存开发流程", exact: true }),
-  ).toBeDisabled();
+    panel().getByRole("button", { name: "保存全部修改", exact: true }),
+  ).not.toBeVisible();
 }
 
 test.beforeEach(async () => {
@@ -88,19 +91,21 @@ test.afterEach(async () => {
 test("开发路线、任务交接验证、保存和重新打开", async () => {
   await openProjects();
   await expect(panel().locator(".wf-mode")).toHaveCount(6);
+  await panel().locator(".wf-setup summary").click();
   await panel()
     .getByRole("button", { name: /每周交付一点/ })
     .click();
   await panel().getByLabel("项目目标").fill("让值班人员完成检查并交接结果");
   await panel().getByLabel("协作方式").selectOption("team");
   await panel()
-    .getByRole("button", { name: "启用开发流程", exact: true })
+    .getByRole("button", { name: "开始规划", exact: true })
     .click();
   await expect(panel().getByRole("status")).toHaveText("开发流程已保存");
   const enabled = (await snapshot()).projects[0];
   expect(enabled.progress).toBe(25);
   expect(enabled.workflow?.mode).toBe("agile");
   expect(enabled.workflow?.milestones.length).toBe(4);
+  await panel().getByRole("button", { name: "计划与设置", exact: true }).click();
   if (!(await panel().getByLabel("开发路线").isVisible()))
     await panel().getByText("目标、范围与流程设置", { exact: true }).click();
   await panel().getByLabel("开发路线").selectOption("kanban");
@@ -124,11 +129,13 @@ test("开发路线、任务交接验证、保存和重新打开", async () => {
   await editor
     .getByLabel("验收标准")
     .fill("创建检查、完成并重新打开后结果保留");
+  await editor.getByText("结果与验证", { exact: true }).click();
   await editor.getByLabel("结果与验证依据").fill("已使用测试检查走通完整流程");
+  await editor.getByText("安排与分工", { exact: true }).click();
   await editor.getByLabel("接收人", { exact: true }).fill("值班负责人");
   await editor.getByLabel("任务状态").selectOption("done");
   await panel()
-    .getByRole("button", { name: "保存开发流程", exact: true })
+    .getByRole("button", { name: "保存全部修改", exact: true })
     .click();
   await expect(panel().getByRole("alert")).toContainText("交接验收通过");
   expect((await snapshot()).projects[0].workflow?.tasks).toHaveLength(0);
@@ -137,6 +144,7 @@ test("开发路线、任务交接验证、保存和重新打开", async () => {
   );
 
   await editor.getByLabel("任务状态").selectOption("review");
+  await editor.getByText("交接包与接收记录", { exact: true }).click();
   await editor
     .getByLabel("交付物及版本")
     .fill("测试演示 v1，项目文档中的操作步骤");
@@ -268,7 +276,7 @@ test("数据变化后拒绝过期流程保存并保留草稿", async () => {
     await api.records.saveLog({ body: "另一个窗口的新记录", date: data.today });
   });
   await panel()
-    .getByRole("button", { name: "保存开发流程", exact: true })
+    .getByRole("button", { name: "保存全部修改", exact: true })
     .click();
   await expect(panel().getByRole("alert")).toContainText(/变化|更新|重新/);
   await expect(panel().getByLabel("项目目标")).toHaveValue(
@@ -327,6 +335,7 @@ test("开发工作台默认折叠、按项目记忆，折叠保留草稿并支�
   mkdirSync("test-results", { recursive: true });
   await page.screenshot({ path: "test-results/workbench-collapsed.png" });
   await toggle().click();
+  await panel().getByRole("button", { name: "计划与设置", exact: true }).click();
   await panel().getByText("目标、范围与流程设置", { exact: true }).click();
   await panel().getByLabel("项目目标").fill("折叠时也要保留的草稿");
   await toggle().click();

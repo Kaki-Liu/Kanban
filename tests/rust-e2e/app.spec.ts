@@ -95,7 +95,35 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
     await expect(widget.getByLabel("确认服务状态",{exact:true})).toBeVisible();
     await widget.screenshot({path:"test-results/rust-widget-checklist.png"});
     expect(await widget.evaluate(async () => { try { await (window as unknown as {kanban:DesktopAPI}).kanban.snapshot(); return "allowed"; } catch(e) { return String(e); } })).toContain("此窗口无此权限");
+    // Hold a real save in flight to inspect the intermediate frame that used to dim all text.
+    await widget.evaluate(() => {
+      const api = (window as unknown as {kanban:DesktopAPI}).kanban;
+      const original = api.items.check;
+      api.items.check = (...args) => new Promise<void>((resolve, reject) => {
+        (window as any).finishCheck = () => {
+          api.items.check = original;
+          original(...args).then(resolve, reject);
+        };
+      });
+      (window as any).originalTitle = document.querySelector(".sticky-run-title");
+    });
     await widget.getByLabel("检查告警",{exact:true}).check();
+    await expect(widget.getByLabel("检查告警",{exact:true})).toBeDisabled();
+    expect(await widget.locator(".sticky-widget button").evaluateAll((buttons) => buttons.every((b) => getComputedStyle(b).opacity === "1"))).toBe(true);
+    expect(await widget.evaluate(() => (window as any).originalTitle === document.querySelector(".sticky-run-title"))).toBe(true);
+    await widget.evaluate(() => (window as any).finishCheck());
+    await expect(widget.getByLabel("检查告警",{exact:true})).toBeEnabled();
+    // A failed write rolls back just the requested check and keeps the rest of the widget readable.
+    await widget.evaluate(() => {
+      const api = (window as unknown as {kanban:DesktopAPI}).kanban;
+      const original = api.items.check;
+      api.items.check = async () => { api.items.check = original; throw new Error("测试保存失败"); };
+    });
+    await widget.getByLabel("确认服务状态",{exact:true}).click();
+    await expect(widget.getByRole("alert")).toContainText("测试保存失败");
+    await expect(widget.getByLabel("确认服务状态",{exact:true})).not.toBeChecked();
+    await expect(widget.getByLabel("检查告警",{exact:true})).toBeChecked();
+    await widget.getByRole("button",{name:"重试",exact:true}).click();
     await widget.getByRole("button",{name:"Rust 运维检查",exact:true}).click();
     await expect(page.getByLabel("检查告警",{exact:true})).toBeChecked();
     await page.getByLabel("确认服务状态",{exact:true}).check();
@@ -106,6 +134,8 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
       const api = (window as unknown as {kanban:DesktopAPI}).kanban;
       const text = await api.projects.exportConfig();
       const v = JSON.parse(text); v.project.name = "Rust 项目配置";
+      v.project.workflow.goal = "让部门同事轻松完成每日检查，并清楚知道项目下一步做什么。";
+      v.project.workflow.tasks[0].title = "验证便签勾选体验";
       const preview = await api.projects.previewConfig(JSON.stringify(v));
       await api.projects.commitConfig(preview.token);
     });
@@ -113,6 +143,51 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
     await expect(page.getByRole("button",{name:"展开开发工作台",exact:true})).toBeVisible();
     await page.getByRole("button",{name:"展开开发工作台",exact:true}).click();
     await expect(page.getByRole("button",{name:"开发任务",exact:true})).toBeVisible();
+    const panel = page.getByRole("region",{name:"项目开发流程"});
+    await expect(panel.getByRole("button",{name:"当前行动",exact:true})).toHaveAttribute("aria-pressed","true");
+    await expect(panel.locator("input:visible, textarea:visible, select:visible")).toHaveCount(0);
+    await panel.getByRole("button",{name:"让 Agent 帮我补全",exact:true}).click();
+    await expect(panel.getByLabel("导出内容预览")).toHaveValue(/每轮最多问 3 个/);
+    await expect(panel.getByLabel("导出内容预览")).toHaveValue(/验证便签勾选体验/);
+    await expect(panel.getByLabel("导出内容预览")).toHaveValue(/kanban-project/);
+    await panel.getByRole("button",{name:"关闭预览",exact:true}).click();
+    await panel.scrollIntoViewIfNeeded();
+    await panel.screenshot({path:"test-results/rust-workbench-overview.png"});
+    await panel.getByRole("button",{name:"查看并处理",exact:true}).click();
+    await expect(panel.getByLabel("任务名称",{exact:true})).toBeVisible();
+    await expect(panel.locator(".wf-board")).toHaveCount(0);
+    await expect(panel.getByLabel("负责人",{exact:true})).not.toBeVisible();
+    await expect(panel.getByLabel("交付物及版本",{exact:true})).not.toBeVisible();
+    await panel.getByLabel("验收标准",{exact:true}).fill("勾选保存时标题持续可见");
+    await panel.getByText("安排与分工",{exact:true}).click();
+    await panel.getByLabel("负责人",{exact:true}).fill("本地测试");
+    await panel.getByText("安排与分工",{exact:true}).click();
+    await panel.getByRole("button",{name:"当前行动",exact:true}).click();
+    await panel.getByRole("button",{name:"让 Agent 帮我补全",exact:true}).click();
+    await expect(panel.getByLabel("导出内容预览")).toHaveValue(/勾选保存时标题持续可见/);
+    await panel.getByRole("button",{name:"关闭预览",exact:true}).click();
+    await panel.getByRole("button",{name:"查看并处理",exact:true}).click();
+    await expect(panel.getByRole("textbox",{name:"验收标准",exact:true})).toHaveValue("勾选保存时标题持续可见");
+    await panel.getByText("安排与分工",{exact:true}).click();
+    await expect(panel.getByLabel("负责人",{exact:true})).toHaveValue("本地测试");
+    await panel.getByText("安排与分工",{exact:true}).click();
+    await panel.getByRole("button",{name:"保存全部修改",exact:true}).click();
+    await expect(panel.getByRole("status")).toHaveText("开发流程已保存");
+    await panel.screenshot({path:"test-results/rust-workbench-task.png"});
+    await panel.getByRole("button",{name:"计划与设置",exact:true}).click();
+    await expect(panel.getByLabel("里程碑名称",{exact:true})).not.toBeVisible();
+    await panel.locator(".wf-route button").first().click();
+    await expect(panel.getByLabel("里程碑名称",{exact:true})).toBeVisible();
+    await expect(panel.locator(".wf-field-label").filter({hasText:/^里程碑验收条件$/})).toHaveAttribute("title", /判断这一阶段是否做完/);
+    await expect(panel.getByLabel("里程碑验收条件",{exact:true})).toHaveAttribute("placeholder", /一分钟后的提醒/);
+    await expect(panel.getByLabel("目标日期",{exact:true})).not.toBeVisible();
+    await panel.getByText("日期与验证记录",{exact:true}).click();
+    await expect(panel.getByLabel("目标日期",{exact:true})).toBeVisible();
+    await panel.getByText("日期与验证记录",{exact:true}).click();
+    await panel.getByRole("button",{name:"收起里程碑详情",exact:true}).click();
+    await panel.getByText("目标、范围与流程设置",{exact:true}).click();
+    await expect(panel.getByLabel("项目目标",{exact:true})).toBeVisible();
+    await panel.getByRole("button",{name:"当前行动",exact:true}).click();
     await page.locator("nav").getByRole("button",{name:/今天/}).click();
     await page.getByRole("button",{name:"日历回顾",exact:true}).click();
     await expect(page.getByRole("region",{name:"当天事项",exact:true})).toContainText("Rust 运维检查");
@@ -163,6 +238,17 @@ test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历
     expect(nativeWindows(child!.pid!).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false});
     await reopened.locator("nav").getByRole("button",{name:/项目/}).click();
     await expect(reopened.getByRole("button",{name:"收起开发工作台",exact:true})).toBeVisible();
+    await reopened.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.projects.save({name:"新流程测试"}));
+    await reopened.locator(".project-selector").getByRole("button",{name:/新流程测试/}).click();
+    await reopened.getByRole("button",{name:"展开开发工作台",exact:true}).click();
+    const setup = reopened.getByRole("region",{name:"项目开发流程"});
+    await expect(setup.locator("input:visible, textarea:visible, select:visible")).toHaveCount(1);
+    await expect(setup.getByRole("button",{name:"开始规划",exact:true})).toBeDisabled();
+    await setup.getByLabel("项目目标",{exact:true}).fill("只先规划一个可开始的任务");
+    await setup.getByRole("button",{name:"开始规划",exact:true}).click();
+    await expect(setup.getByRole("button",{name:"当前行动",exact:true})).toHaveAttribute("aria-pressed","true");
+    await setup.getByRole("button",{name:"开始这一步",exact:true}).click();
+    await expect(setup.getByLabel("任务名称",{exact:true})).not.toHaveValue("");
   } finally {
     await stop();
     if (!resolve(dir).startsWith(resolve(tmpdir()) + sep + "kanban-rust-ui-"))

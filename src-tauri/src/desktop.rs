@@ -860,6 +860,16 @@ fn reject_legacy_instance() -> Result<()> {
     Ok(())
 }
 pub fn run() {
+    let mut context = tauri::generate_context!();
+    if std::env::var_os("KANBAN_E2E").is_some() {
+        if let Some(directory) = std::env::var_os("KANBAN_DATA_DIR") {
+            // Isolated UI tests must not forward activation to the user's running app.
+            use std::hash::{Hash, Hasher};
+            let mut hash = std::collections::hash_map::DefaultHasher::new();
+            directory.hash(&mut hash);
+            context.config_mut().identifier = format!("local.kanban.test.{:x}", hash.finish());
+        }
+    }
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             show_main(app, None)
@@ -1095,7 +1105,7 @@ pub fn run() {
             });
             Ok(())
         });
-    match builder.build(tauri::generate_context!()) {
+    match builder.build(context) {
         Ok(app) => app.run(|app, event| {
             if let tauri::RunEvent::ExitRequested { api, .. } = event {
                 if !state(app).quitting.load(Ordering::SeqCst) {

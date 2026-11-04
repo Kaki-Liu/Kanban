@@ -188,6 +188,12 @@
 .wf-grid label {
   min-width: 0;
 }
+.wf-field-label[title] {
+  width: fit-content;
+  cursor: help;
+  text-decoration: underline dotted #bdc8d9;
+  text-underline-offset: 4px;
+}
 .wf-section-heading {
   margin: 22px 0 14px;
 }
@@ -316,7 +322,8 @@
   line-height: 1.8;
 }
 .wf-task-editor {
-  margin-top: 20px;
+  border-top: 0;
+  padding-top: 0;
 }
 .wf-person {
   display: grid;
@@ -374,6 +381,11 @@
   border-top: 1px solid #dfe7f2;
   color: #8d6c34;
   font-size: 12px;
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  z-index: 1;
+  padding-bottom: 12px;
 }
 .wf-error {
   background: #fff3f3;

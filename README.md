@@ -119,4 +119,4 @@ npm run dist
 
 ## 版本管理
 
-源码使用本地 Git 管理，当前版本为 `0.4.0`。没有配置或推送远程仓库。版本变化见 [更新记录](CHANGELOG.md)，测试结果及安装包校验值见 [验收记录](docs/VERIFICATION.md)。
+源码使用本地 Git 管理，当前版本为 `0.4.1`。没有配置或推送远程仓库。版本变化见 [更新记录](CHANGELOG.md)，测试结果及安装包校验值见 [验收记录](docs/VERIFICATION.md)。

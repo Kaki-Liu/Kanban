@@ -19,6 +19,8 @@ import {
   mergeWorkflowImport,
 } from "../../shared/workflow-templates";
 import "./workflow.css";
+import { workflowFieldHelp } from "./workflow-field-help";
+import { projectConfigAgentPrompt, projectConfigText } from "../../shared/project-config";
 
 const taskStates = {
   todo: "待开始",
@@ -107,6 +109,14 @@ function WorkbenchDisclosure({
   );
 }
 
+function FieldCaption({ label }: { label: string }) {
+  return (
+    <span className="wf-field-label" title={workflowFieldHelp[label]?.description}>
+      {label}
+    </span>
+  );
+}
+
 function Field({
   label,
   value,
@@ -124,23 +134,28 @@ function Field({
   type?: string;
   required?: boolean;
 }) {
+  const help = workflowFieldHelp[label];
   return (
     <label>
-      {label}
+      <FieldCaption label={label} />
       {multiline ? (
         <textarea
+          aria-label={label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
+          placeholder={help?.example || placeholder}
+          aria-description={help?.description}
           rows={3}
           required={required}
         />
       ) : (
         <input
+          aria-label={label}
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
+          placeholder={help?.example || placeholder}
+          aria-description={help?.description}
           required={required}
         />
       )}
@@ -207,7 +222,7 @@ export function WorkflowPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [tab, setTab] = useState("route");
+  const [tab, setTab] = useState("overview");
   const [milestoneId, setMilestoneId] = useState("");
   const [taskId, setTaskId] = useState("");
   const [decisionId, setDecisionId] = useState("");
@@ -335,6 +350,11 @@ export function WorkflowPanel({
       setError(`请先补全当前配置：${errorText(e)}`);
     }
   }
+  function askAgent() {
+    showExport("让 Agent 通过问答补全项目", () =>
+      projectConfigAgentPrompt(projectConfigText({ ...project, workflow })),
+    );
+  }
   async function copy(text: string) {
     try {
       await window.kanban.window.copyText(text);
@@ -405,6 +425,9 @@ export function WorkflowPanel({
   const openDecisions = workflow.decisions.filter(
     (d) => d.status === "pending",
   );
+  const stepHasPendingTasks = workflow.tasks.some(
+    (task) => task.milestoneId === activeStep?.id && task.state !== "done",
+  );
 
   return (
     <WorkbenchDisclosure
@@ -416,30 +439,6 @@ export function WorkflowPanel({
       }
       dirty={dirty}
     >
-      <div className="wf-heading">
-        <div>
-          <h2>{enabled ? activeMode?.label : "选一条路线，从第一步开始"}</h2>
-          <p className="wf-subtitle">
-            {enabled
-              ? `${collabNames[workflow.collaboration]} · ${workflow.milestones.filter((m) => m.state === "completed").length}/${workflow.milestones.length} 个里程碑已验收`
-              : "目标、开发、验证、交接，每一步都有完成依据。"}
-          </p>
-        </div>
-        {enabled && (
-          <div className="wf-actions">
-            <span className="meta">
-              {dirty ? "有未保存的修改" : "已保存到本机"}
-            </span>
-            <button
-              className="primary"
-              disabled={busy || !dirty}
-              onClick={() => void save()}
-            >
-              保存开发流程
-            </button>
-          </div>
-        )}
-      </div>
       {error && (
         <div className="wf-error" role="alert">
           <p>{error}</p>
@@ -462,106 +461,113 @@ export function WorkflowPanel({
       <fieldset disabled={busy}>
         {!enabled ? (
           <div className="wf-setup">
-            <div className="wf-mode-grid">
-              {workflowModes.map((mode) => (
-                <button
-                  key={mode.id}
-                  className={`wf-mode ${workflow.mode === mode.id ? "selected" : ""}`}
-                  aria-pressed={workflow.mode === mode.id}
-                  onClick={() => {
-                    const created = createWorkflow(
-                      mode.id,
-                      workflow.collaboration,
-                      workflow.guidance,
-                    );
-                    change({
-                      ...created,
-                      goal: workflow.goal,
-                      scope: workflow.scope,
-                      outOfScope: workflow.outOfScope,
-                      acceptance: workflow.acceptance,
-                    });
-                  }}
-                >
-                  <strong>{mode.label}</strong>
-                  <small>{mode.subtitle}</small>
-                  <span>{mode.description}</span>
-                </button>
-              ))}
-            </div>
             <Field
               label="项目目标"
               value={workflow.goal}
               onChange={(goal) => update({ goal })}
-              placeholder="谁会使用？解决什么麻烦？例如：让值班人员每天按时完成检查。"
+              placeholder="谁会使用？希望解决什么问题？"
               multiline
               required
             />
-            <div className="wf-grid">
-              <label>
-                协作方式
-                <select
-                  value={workflow.collaboration}
-                  onChange={(e) =>
-                    update({
-                      collaboration: e.target
-                        .value as Workflow["collaboration"],
-                    })
-                  }
-                >
-                  {Object.entries(collabNames).map(([v, label]) => (
-                    <option key={v} value={v}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                引导程度
-                <select
-                  value={workflow.guidance}
-                  onChange={(e) =>
-                    update({ guidance: e.target.value as Workflow["guidance"] })
-                  }
-                >
-                  <option value="detailed">详细：每一步带着做</option>
-                  <option value="compact">精简：提示关键节点</option>
-                </select>
-              </label>
-            </div>
+            <details className="wf-details">
+              <summary>开发方式 · {activeMode?.label}</summary>
+              <div className="wf-mode-grid">
+                {workflowModes.map((mode) => (
+                  <button
+                    key={mode.id}
+                    className={`wf-mode ${workflow.mode === mode.id ? "selected" : ""}`}
+                    aria-pressed={workflow.mode === mode.id}
+                    onClick={() => {
+                      const created = createWorkflow(
+                        mode.id,
+                        workflow.collaboration,
+                        workflow.guidance,
+                      );
+                      change({
+                        ...created,
+                        goal: workflow.goal,
+                        scope: workflow.scope,
+                        outOfScope: workflow.outOfScope,
+                        acceptance: workflow.acceptance,
+                      });
+                    }}
+                  >
+                    <strong>{mode.label}</strong>
+                    <small>{mode.subtitle}</small>
+                    <span>{mode.description}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="wf-grid">
+                <label>
+                  <FieldCaption label="协作方式" />
+                  <select
+                    value={workflow.collaboration}
+                    onChange={(e) =>
+                      update({
+                        collaboration: e.target
+                          .value as Workflow["collaboration"],
+                      })
+                    }
+                  >
+                    {Object.entries(collabNames).map(([v, label]) => (
+                      <option key={v} value={v}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <FieldCaption label="引导程度" />
+                  <select
+                    value={workflow.guidance}
+                    onChange={(e) =>
+                      update({ guidance: e.target.value as Workflow["guidance"] })
+                    }
+                  >
+                    <option value="detailed">详细：每一步带着做</option>
+                    <option value="compact">精简：提示关键节点</option>
+                  </select>
+                </label>
+              </div>
+            </details>
             <button
               className="primary"
               disabled={!workflow.goal.trim()}
               onClick={() => void save()}
             >
-              启用开发流程
+              开始规划
             </button>
+            <button className="text-button" onClick={askAgent}>让 Agent 帮我补全</button>
           </div>
         ) : (
           <>
-            <p className="wf-project-goal">
-              <strong>本次目标：</strong>
-              {workflow.goal || "先说明想为谁解决什么问题。"}
-            </p>
             <div className="wf-tabs" aria-label="开发流程视图">
               {[
-                ["route", "路线与目标"],
+                ["overview", "当前行动"],
                 ["tasks", "开发任务"],
+                ["route", "计划与设置"],
                 ["collaboration", "协作与交接"],
                 ["agent", "Agent 配置"],
               ].map(([id, label]) => (
                 <button
                   key={id}
                   aria-pressed={tab === id}
-                  onClick={() => setTab(id)}
+                  onClick={() => {
+                    setTab(id);
+                    if (id === "tasks") setTaskId("");
+                  }}
                 >
                   {label}
                 </button>
               ))}
             </div>
 
-            {tab === "route" && (
+            {tab === "overview" && (
               <div className="wf-tab-content">
+                <p className="wf-project-goal">
+                  {workflow.goal || "先说明想为谁解决什么问题。"}
+                </p>
                 <div className="wf-focus">
                   <span className="wf-kicker">下一步</span>
                   {!workflow.goal.trim() ? (
@@ -572,7 +578,10 @@ export function WorkflowPanel({
                       </p>
                       <button
                         className="primary"
-                        onClick={() => setSettingsOpen(true)}
+                        onClick={() => {
+                          setTab("route");
+                          setSettingsOpen(true);
+                        }}
                       >
                         填写项目目标
                       </button>
@@ -615,20 +624,23 @@ export function WorkflowPanel({
                     <>
                       <h3>{activeStep.title}</h3>
                       <p>
-                        {workflow.tasks.some(
-                          (t) =>
-                            t.milestoneId === activeStep.id &&
-                            t.state !== "done",
-                        )
+                        {stepHasPendingTasks
                           ? "当前事项可能受阻或等待验收。先查看依赖和等待项，再安排下一步。"
                           : "把这个里程碑拆成一项可以开始的小任务。"}
                       </p>
                       <div className="wf-actions">
                         <button
                           className="primary"
-                          onClick={() => addTask(activeStep, true)}
+                          onClick={() => {
+                            if (stepHasPendingTasks) {
+                              setTaskId("");
+                              setTab("tasks");
+                            } else {
+                              addTask(activeStep, true);
+                            }
+                          }}
                         >
-                          开始这一步
+                          {stepHasPendingTasks ? "查看受阻任务" : "开始这一步"}
                         </button>
                         <button onClick={() => setTab("collaboration")}>
                           查看等待事项
@@ -642,6 +654,11 @@ export function WorkflowPanel({
                     </>
                   )}
                 </div>
+                <button onClick={askAgent}>让 Agent 帮我补全</button>
+              </div>
+            )}
+            {tab === "route" && (
+              <div className="wf-tab-content">
                 <details
                   className="wf-details"
                   open={settingsOpen}
@@ -679,7 +696,7 @@ export function WorkflowPanel({
                   />
                   <div className="wf-grid">
                     <label>
-                      开发路线
+                      <FieldCaption label="开发路线" />
                       <select
                         value={workflow.mode}
                         onChange={(e) =>
@@ -694,7 +711,7 @@ export function WorkflowPanel({
                       </select>
                     </label>
                     <label>
-                      协作方式
+                      <FieldCaption label="协作方式" />
                       <select
                         value={workflow.collaboration}
                         onChange={(e) =>
@@ -712,7 +729,7 @@ export function WorkflowPanel({
                       </select>
                     </label>
                     <label>
-                      引导程度
+                      <FieldCaption label="引导程度" />
                       <select
                         value={workflow.guidance}
                         onChange={(e) =>
@@ -726,7 +743,7 @@ export function WorkflowPanel({
                       </select>
                     </label>
                     <label>
-                      同时进行的任务上限
+                      <FieldCaption label="同时进行的任务上限" />
                       <input
                         type="number"
                         min={1}
@@ -784,8 +801,12 @@ export function WorkflowPanel({
                     </button>
                   ))}
                 </div>
-                {current && (
+                {current && milestoneId && (
                   <div className="wf-milestone">
+                    <div className="wf-section-heading">
+                      <h3>{current.title}</h3>
+                      <button onClick={() => setMilestoneId("")}>收起里程碑详情</button>
+                    </div>
                     <div className="wf-grid">
                       <Field
                         label="里程碑名称"
@@ -795,7 +816,7 @@ export function WorkflowPanel({
                         }
                       />
                       <label>
-                        里程碑状态
+                        <FieldCaption label="里程碑状态" />
                         <select
                           value={current.state}
                           onChange={(e) =>
@@ -810,14 +831,6 @@ export function WorkflowPanel({
                           <option value="completed">已验收</option>
                         </select>
                       </label>
-                      <Field
-                        label="目标日期"
-                        type="date"
-                        value={current.dueDate || ""}
-                        onChange={(dueDate) =>
-                          updateMilestone({ ...current, dueDate })
-                        }
-                      />
                     </div>
                     {workflow.mode === "agile" && (
                       <p className="hint">
@@ -843,18 +856,21 @@ export function WorkflowPanel({
                       multiline
                     />
                     {workflow.guidance === "detailed" && (
-                      <div className="wf-guide">
-                        <dl>
-                          <dt>现在做</dt>
-                          <dd>{guide.action}</dd>
-                          <dt>参考例子</dt>
-                          <dd>{guide.example}</dd>
-                          <dt>完成依据</dt>
-                          <dd>{guide.done}</dd>
-                          <dt>卡住了</dt>
-                          <dd>{guide.blocked}</dd>
-                        </dl>
-                      </div>
+                      <details className="wf-details">
+                        <summary>填写参考</summary>
+                        <div className="wf-guide">
+                          <dl>
+                            <dt>现在做</dt>
+                            <dd>{guide.action}</dd>
+                            <dt>参考例子</dt>
+                            <dd>{guide.example}</dd>
+                            <dt>完成依据</dt>
+                            <dd>{guide.done}</dd>
+                            <dt>卡住了</dt>
+                            <dd>{guide.blocked}</dd>
+                          </dl>
+                        </div>
+                      </details>
                     )}
                     <Field
                       label="里程碑验收条件"
@@ -864,15 +880,24 @@ export function WorkflowPanel({
                       }
                       multiline
                     />
-                    <Field
-                      label="里程碑验证依据"
-                      value={current.evidence}
-                      onChange={(evidence) =>
-                        updateMilestone({ ...current, evidence })
-                      }
-                      multiline
-                      placeholder="实际结果、测试记录、交付物位置；标记已验收前填写"
-                    />
+                    <details className="wf-details" open={current.state === "completed"}>
+                      <summary>日期与验证记录</summary>
+                      <Field
+                        label="目标日期"
+                        type="date"
+                        value={current.dueDate || ""}
+                        onChange={(dueDate) => updateMilestone({ ...current, dueDate })}
+                      />
+                      <Field
+                        label="里程碑验证依据"
+                        value={current.evidence}
+                        onChange={(evidence) =>
+                          updateMilestone({ ...current, evidence })
+                        }
+                        multiline
+                        placeholder="实际结果、测试记录、交付物位置；标记已验收前填写"
+                      />
+                    </details>
                     <div className="wf-actions">
                       <button onClick={() => addTask(current)}>
                         为这个里程碑添加任务
@@ -914,75 +939,74 @@ export function WorkflowPanel({
 
             {tab === "tasks" && (
               <div className="wf-tab-content">
-                <div className="wf-section-heading">
-                  <div>
-                    <h3>把目标变成可以开始的行动</h3>
-                    <p className="hint">
-                      建议同时只推进一项主要任务；实现后先验证，再标记完成。
-                    </p>
+                {!selectedTask && <>
+                  <div className="wf-section-heading">
+                    <div>
+                      <h3>开发任务</h3>
+                    </div>
+                    <button className="primary" onClick={() => addTask(current)}>
+                      ＋ 开发任务
+                    </button>
                   </div>
-                  <button className="primary" onClick={() => addTask(current)}>
-                    ＋ 开发任务
-                  </button>
-                </div>
-                {workflow.tasks.filter((t) => t.state === "doing").length >
-                  (workflow.wipLimit ?? 1) && (
-                  <p className="wf-warning">
-                    当前有{" "}
-                    {workflow.tasks.filter((t) => t.state === "doing").length}{" "}
-                    项任务在进行中，超过约定的 {workflow.wipLimit ?? 1}{" "}
-                    项上限。先完成或解除阻碍，再开始下一项；团队可按负责人检查分工。
-                  </p>
-                )}
-                <div className="wf-board">
-                  {Object.entries(taskStates).map(([state, label]) => (
-                    <section key={state} className="wf-column">
-                      <h3>
-                        {label}
-                        <span>
-                          {
-                            workflow.tasks.filter((t) => t.state === state)
-                              .length
-                          }
-                        </span>
-                      </h3>
-                      {workflow.tasks
-                        .filter((t) => t.state === state)
-                        .map((t) => (
-                          <button
-                            key={t.id}
-                            className={`wf-task ${taskId === t.id ? "selected" : ""}`}
-                            onClick={() => setTaskId(t.id)}
-                          >
-                            <strong>{t.title || "填写任务名称"}</strong>
-                            <small>
-                              {workflow.milestones.find(
-                                (m) => m.id === t.milestoneId,
-                              )?.title || "未关联里程碑"}
-                            </small>
-                            <span>
-                              {t.owner || "待分工"} · {priorities[t.priority]}
-                            </span>
-                            {t.blocker && <em>受阻：{t.blocker}</em>}
-                            {t.receiver && (
+                  {workflow.tasks.filter((t) => t.state === "doing").length >
+                    (workflow.wipLimit ?? 1) && (
+                    <p className="wf-warning">
+                      当前有{" "}
+                      {workflow.tasks.filter((t) => t.state === "doing").length}{" "}
+                      项任务在进行中，超过约定的 {workflow.wipLimit ?? 1}{" "}
+                      项上限。先完成或解除阻碍，再开始下一项；团队可按负责人检查分工。
+                    </p>
+                  )}
+                  <div className="wf-board">
+                    {Object.entries(taskStates).map(([state, label]) => (
+                      <section key={state} className="wf-column">
+                        <h3>
+                          {label}
+                          <span>
+                            {
+                              workflow.tasks.filter((t) => t.state === state)
+                                .length
+                            }
+                          </span>
+                        </h3>
+                        {workflow.tasks
+                          .filter((t) => t.state === state)
+                          .map((t) => (
+                            <button
+                              key={t.id}
+                              className={`wf-task ${taskId === t.id ? "selected" : ""}`}
+                              onClick={() => setTaskId(t.id)}
+                            >
+                              <strong>{t.title || "填写任务名称"}</strong>
                               <small>
-                                {handoffStates[t.handoff.status]} → {t.receiver}
+                                {workflow.milestones.find(
+                                  (m) => m.id === t.milestoneId,
+                                )?.title || "未关联里程碑"}
                               </small>
-                            )}
-                          </button>
-                        ))}
-                    </section>
-                  ))}
-                </div>
-                {!workflow.tasks.length && (
-                  <p className="wf-empty">
-                    还没有任务。添加一个能实际验证的小结果，例如“创建提醒后能按时弹出”。
-                  </p>
-                )}
+                              <span>
+                                {t.owner || "待分工"} · {priorities[t.priority]}
+                              </span>
+                              {t.blocker && <em>受阻：{t.blocker}</em>}
+                              {t.receiver && (
+                                <small>
+                                  {handoffStates[t.handoff.status]} → {t.receiver}
+                                </small>
+                              )}
+                            </button>
+                          ))}
+                      </section>
+                    ))}
+                  </div>
+                  {!workflow.tasks.length && (
+                    <p className="wf-empty">
+                      还没有任务。添加一个能实际验证的小结果，例如“创建提醒后能按时弹出”。
+                    </p>
+                  )}
+                </>}
                 {selectedTask && (
                   <div className="wf-task-editor">
                     <div className="wf-section-heading">
-                      <h3>任务详情</h3>
+                      <h3>{selectedTask.title || "新任务"}</h3>
                       <div className="wf-actions">
                         {!selectedTask.hasStarted &&
                           selectedTask.state === "todo" &&
@@ -995,54 +1019,49 @@ export function WorkflowPanel({
                               移除未开始任务
                             </button>
                           )}
-                        <button onClick={() => setTaskId("")}>收起详情</button>
+                        <button onClick={() => setTaskId("")}>返回任务列表</button>
                       </div>
                     </div>
                     <TaskEditor
+                      key={selectedTask.id}
                       task={selectedTask}
                       workflow={workflow}
                       onChange={updateTask}
                     />
-                    <div className="wf-actions">
-                      <button
-                        className="primary"
-                        disabled={!dirty}
-                        onClick={() => void save()}
-                      >
-                        保存任务与流程
-                      </button>
-                      <button
-                        onClick={() =>
-                          showExport(
-                            "给 Agent 的任务说明",
-                            agentBrief(project.name, workflow, selectedTask),
-                          )
-                        }
-                      >
-                        预览任务说明
-                      </button>
-                      <button
-                        onClick={() =>
-                          showExport(
-                            "交接清单",
-                            handoffBrief(project.name, selectedTask),
-                          )
-                        }
-                      >
-                        预览交接清单
-                      </button>
-                      <button
-                        onClick={() =>
-                          remind(
-                            `跟进：${selectedTask.title}`,
-                            `${selectedTask.blocker || selectedTask.acceptance}\n负责人：${selectedTask.owner}\n接收人：${selectedTask.receiver}`,
-                            selectedTask.followUpDate,
-                          )
-                        }
-                      >
-                        创建跟进提醒
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => showExport(
+                        "给 Agent 的任务说明",
+                        agentBrief(project.name, workflow, selectedTask),
+                      )}
+                    >
+                      预览任务说明
+                    </button>
+                    <details className="wf-details">
+                      <summary>交接与提醒</summary>
+                      <div className="wf-actions">
+                        <button
+                          onClick={() =>
+                            showExport(
+                              "交接清单",
+                              handoffBrief(project.name, selectedTask),
+                            )
+                          }
+                        >
+                          预览交接清单
+                        </button>
+                        <button
+                          onClick={() =>
+                            remind(
+                              `跟进：${selectedTask.title}`,
+                              `${selectedTask.blocker || selectedTask.acceptance}\n负责人：${selectedTask.owner}\n接收人：${selectedTask.receiver}`,
+                              selectedTask.followUpDate,
+                            )
+                          }
+                        >
+                          创建跟进提醒
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 )}
               </div>
@@ -1288,7 +1307,7 @@ export function WorkflowPanel({
                         }
                       />
                       <label>
-                        记录类型
+                        <FieldCaption label="记录类型" />
                         <select
                           value={selectedDecision.kind}
                           onChange={(e) =>
@@ -1351,7 +1370,7 @@ export function WorkflowPanel({
                         type="date"
                       />
                       <label>
-                        确认情况
+                        <FieldCaption label="确认情况" />
                         <select
                           value={selectedDecision.status}
                           onChange={(e) =>
@@ -1398,6 +1417,7 @@ export function WorkflowPanel({
                     导出当前项目的目标、流程和任务。普通笔记、个人流水不会混入。参与人信息和你填写在流程中的内容会包含在内，请先检查预览。
                   </p>
                   <div className="wf-actions">
+                    <button onClick={askAgent}>让 Agent 帮我补全</button>
                     {onProjectConfig && (
                       <button onClick={onProjectConfig}>
                         完整项目信息文件
@@ -1600,52 +1620,21 @@ function TaskEditor({
         required
         placeholder="一个能验证的小结果"
       />
-      <div className="wf-grid">
-        <label>
-          所属里程碑
-          <select
-            value={task.milestoneId}
-            onChange={(e) => set({ milestoneId: e.target.value })}
-          >
-            <option value="">未关联</option>
-            {workflow.milestones.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          任务状态
-          <select
-            value={task.state}
-            onChange={(e) =>
-              set({ state: e.target.value as WorkflowTask["state"] })
-            }
-          >
-            {Object.entries(taskStates).map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          优先级
-          <select
-            value={task.priority}
-            onChange={(e) =>
-              set({ priority: e.target.value as WorkflowTask["priority"] })
-            }
-          >
-            {Object.entries(priorities).map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <label>
+        <FieldCaption label="任务状态" />
+        <select
+          value={task.state}
+          onChange={(e) =>
+            set({ state: e.target.value as WorkflowTask["state"] })
+          }
+        >
+          {Object.entries(taskStates).map(([v, label]) => (
+            <option key={v} value={v}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
       <Field
         label="验收标准"
         value={task.acceptance}
@@ -1653,31 +1642,62 @@ function TaskEditor({
         multiline
         placeholder="使用什么样例、做什么操作、期待得到什么结果"
       />
-      <Field
-        label="结果与验证依据"
-        value={task.evidence}
-        onChange={(evidence) => set({ evidence })}
-        multiline
-        placeholder="实际测试结果、截图或文档位置；标记完成前填写"
-      />
-      <div className="wf-grid">
+      <details className="wf-details" open={task.state === "review" || task.state === "done"}>
+        <summary>结果与验证</summary>
         <Field
-          label="负责人"
-          value={task.owner}
-          onChange={(owner) => set({ owner })}
-          placeholder="一位主要负责人"
+          label="结果与验证依据"
+          value={task.evidence}
+          onChange={(evidence) => set({ evidence })}
+          multiline
+          placeholder="实际测试结果、截图或文档位置；标记完成前填写"
         />
-        <Field
-          label="验收人"
-          value={task.reviewer}
-          onChange={(reviewer) => set({ reviewer })}
-        />
-        <Field
-          label="接收人"
-          value={task.receiver}
-          onChange={(receiver) => set({ receiver })}
-        />
-      </div>
+      </details>
+      <details className="wf-details">
+        <summary>安排与分工</summary>
+          <div className="wf-grid">
+            <label>
+              <FieldCaption label="所属里程碑" />
+              <select
+                value={task.milestoneId}
+                onChange={(e) => set({ milestoneId: e.target.value })}
+              >
+                <option value="">未关联</option>
+                {workflow.milestones.map((m) => (
+                  <option key={m.id} value={m.id}>{m.title}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <FieldCaption label="优先级" />
+              <select
+                value={task.priority}
+                onChange={(e) => set({ priority: e.target.value as WorkflowTask["priority"] })}
+              >
+                {Object.entries(priorities).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        <div className="wf-grid">
+          <Field
+            label="负责人"
+            value={task.owner}
+            onChange={(owner) => set({ owner })}
+            placeholder="一位主要负责人"
+          />
+          <Field
+            label="验收人"
+            value={task.reviewer}
+            onChange={(reviewer) => set({ reviewer })}
+          />
+          <Field
+            label="接收人"
+            value={task.receiver}
+            onChange={(receiver) => set({ receiver })}
+          />
+        </div>
+      </details>
       <details className="wf-details">
         <summary>责任边界、依赖与卡点</summary>
         <Field
@@ -1744,13 +1764,13 @@ function TaskEditor({
           type="date"
         />
       </details>
-      <details className="wf-details" open={Boolean(task.receiver)}>
+      <details className="wf-details">
         <summary>交接包与接收记录</summary>
         <p className="hint">
           提交、接收和验收是不同事实。按实际沟通登记；指定接收人的任务，需要验收通过后才能完成。
         </p>
         <label>
-          交接状态
+          <FieldCaption label="交接状态" />
           <select
             value={task.handoff.status}
             onChange={(e) =>
