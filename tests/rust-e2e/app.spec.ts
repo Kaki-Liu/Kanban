@@ -95,6 +95,40 @@ async function withRustApp(run: (session: RustSession) => Promise<void>, now?: s
   }
 }
 
+test("桌面便签入口唤回已打开的窗口，并保留置顶偏好", async () => {
+  await withRustApp(async (session) => {
+    const page = await session.launch();
+    const openWidget = page.getByRole("button", {name:/桌面便签/});
+    await openWidget.click();
+    await expect.poll(() => session.contexts.flatMap((c) => c.pages()).some((p) => p.url().includes("window=widget"))).toBe(true);
+    const widget = session.contexts.flatMap((c) => c.pages()).find((p) => p.url().includes("window=widget"))!;
+    await expect(widget.getByRole("button", {name:"取消置顶",exact:true})).toBeVisible();
+    await widget.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.setPinned(false));
+
+    // The existing window stays visible behind the foreground main window.
+    // Visibility alone cannot prove that clicking the entry actually recalls it.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await widget.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.openMain());
+      await expect.poll(() => nativeWindows(session.pid).find((w) => w.title === "本地工作看板")?.focused).toBe(true);
+      expect(nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false,focused:false});
+      await openWidget.click();
+      await expect.poll(() => nativeWindows(session.pid).find((w) => w.title === "桌面便签"), {timeout:5000}).toMatchObject({visible:true,top:false,focused:true});
+    }
+
+    await widget.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.hide());
+    expect(nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:false});
+    await openWidget.click();
+    await expect.poll(() => nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:false,focused:true});
+    await expect(widget.getByRole("button", {name:"置顶便签",exact:true})).toBeVisible();
+
+    await widget.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.setPinned(true));
+    await widget.evaluate(() => (window as unknown as {kanban:DesktopAPI}).kanban.widget.openMain());
+    await openWidget.click();
+    await expect.poll(() => nativeWindows(session.pid).find((w) => w.title === "桌面便签")).toMatchObject({visible:true,top:true,focused:true});
+    await expect(widget.getByRole("button", {name:"取消置顶",exact:true})).toBeVisible();
+  });
+});
+
 test("Rust 桌面完整界面、旧配置、清单、便签、工作台和日历", async () => {
   await withRustApp(async (session) => {
     const { launch, stop } = session;

@@ -87,7 +87,10 @@ function showWidget(): void {
   updateWidgetPreferences({ visible: true });
   positionWidget();
   widgetWindow.setAlwaysOnTop(widgetPreferences.pinned);
-  if (widgetReady && !locked) widgetWindow.showInactive();
+  if (widgetReady && !locked) {
+    widgetWindow.show();
+    widgetWindow.focus();
+  }
   widgetWindow.webContents.send("kb:changed");
 }
 function hideWidget(): void {

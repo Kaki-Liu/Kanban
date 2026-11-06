@@ -280,7 +280,11 @@ fn widget_visible(app: &AppHandle, visible: bool) -> Result<()> {
     if visible {
         position_widget(app)?;
         if !st.locked.load(Ordering::SeqCst) {
-            show_inactive(&w);
+            // This is an explicit user request: recall an already visible but
+            // covered window without changing its persistent pin preference.
+            w.unminimize().map_err(err)?;
+            w.show().map_err(err)?;
+            w.set_focus().map_err(err)?;
         }
         let _ = w.emit("kb:changed", ());
     } else {

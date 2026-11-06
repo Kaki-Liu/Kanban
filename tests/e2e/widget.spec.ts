@@ -48,7 +48,7 @@ test.afterEach(async () => {
   expect(errors).toEqual([]);
 });
 
-test("便签常驻且不抢焦点，清单跨窗口同步，最近两条提醒只读预告", async () => {
+test("手动打开便签获得焦点，清单跨窗口同步，最近两条提醒只读预告", async () => {
   const original = await page.evaluate(async () => {
     const api = (window as unknown as { kanban: DesktopAPI }).kanban;
     const { today } = await api.snapshot();
@@ -78,9 +78,9 @@ test("便签常驻且不抢焦点，清单跨窗口同步，最近两条提醒�
   });
   expect(original.runs).toHaveLength(1);
   await page.getByRole("button", { name: /桌面便签/ }).click();
-  await expect.poll(async () => (await widgetState()).visible).toBe(true);
+  await expect.poll(async () => (await widgetState()).focused).toBe(true);
   const state = await widgetState();
-  expect(state.focused).toBe(false);
+  expect(state.visible).toBe(true);
   expect(state.pinned).toBe(true);
   expect(state.bounds.width).toBe(380);
   expect(state.bounds.height).toBe(560);
